@@ -1,0 +1,72 @@
+CHECKPOINT:
+  eval_steps: 1
+  load_from_checkpoint: models/saved_models/PASTIS_LOW/TSViT-S_fold1.early/best.pth
+  partial_restore: false
+  save_path: models/saved_models/PASTIS_LOW/TSViT-S_fold1.early.print
+  save_steps: 20000000000
+  train_metrics_steps: 20000000000
+DATASETS:
+  eval:
+    base_dir: /Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW
+    batch_size: 16
+    bidir_input: false
+    dataset: PASTIS_LOW_fold1
+    extra_data: null
+    label_map: null
+    max_seq_len: 60
+    num_workers: 4
+    paths: /Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW/fold-paths/fold_4_paths.csv
+  test:
+    batch_size: 24
+    dataset: PASTIS_LOW_fold1
+    extra_data: null
+    label_map: null
+    max_seq_len: 60
+    num_workers: 4
+  train:
+    base_dir: /Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW
+    batch_size: 16
+    bidir_input: false
+    dataset: PASTIS_LOW_fold1
+    extra_data: null
+    label_map: null
+    max_seq_len: 60
+    num_workers: 4
+    paths: /Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW/fold-paths/folds_1_123_paths.csv
+MODEL:
+  architecture: TSViT
+  dim: 64
+  dim_head: 16
+  dropout: 0.0
+  emb_dropout: 0.0
+  heads: 4
+  ignore_background: false
+  img_res: 24
+  max_seq_len: 60
+  num_channels: 11
+  num_classes: 19
+  num_features: 16
+  patch_size: 2
+  pool: cls
+  scale_dim: 4
+  spatial_depth: 4
+  temporal_depth: 4
+SOLVER:
+  class_weights: null
+  confidence_threshold: 0.99
+  early_classification: true
+  loss_function: masked_cross_entropy
+  lr_base: 1e-3
+  lr_min: 5e-6
+  lr_scheduler: cosine
+  lr_start: 1e-8
+  min_timesteps: 3
+  num_cycles: 1
+  num_epochs: 100
+  num_warmup_epochs: 10
+  reset_lr: true
+  steps: (0, 80000)
+  weight_decay: 0.0
+local_device_ids:
+- 0
+- 1

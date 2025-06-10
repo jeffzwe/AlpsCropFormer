@@ -1,0 +1,64 @@
+
+
+# PASTIS24 -------------------------------------------------------------------------------------------------
+PASTIS24_fold1:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    paths_train: "fold-paths/folds_1_123_paths.csv"
+    paths_eval: "fold-paths/fold_4_paths.csv"
+    paths_test: "fold-paths/fold_5_paths.csv"
+
+PASTIS24_fold2:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    paths_train: "fold-paths/folds_2_234_paths.csv"
+    paths_eval: "fold-paths/fold_5_paths.csv"
+    paths_test: "fold-paths/fold_1_paths.csv"
+
+PASTIS24_fold3:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    paths_train: "fold-paths/folds_3_345_paths.csv"
+    paths_eval: "fold-paths/fold_1_paths.csv"
+    paths_test: "fold-paths/fold_2_paths.csv"
+
+PASTIS24_fold4:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    paths_train: "fold-paths/folds_4_451_paths.csv"
+    paths_eval: "fold-paths/fold_2_paths.csv"
+    paths_test: "fold-paths/fold_3_paths.csv"
+
+PASTIS24_fold5:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    paths_train: "fold-paths/folds_5_512_paths.csv"
+    paths_eval: "fold-paths/fold_3_paths.csv"
+    paths_test: "fold-paths/fold_4_paths.csv"
+
+# PASTIS_LOW ----------------------------------------------------------------------------------------------
+
+PASTIS_LOW_fold1:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    paths_train: "fold-paths/folds_1_123_paths.csv"
+    paths_eval: "fold-paths/fold_4_paths.csv"
+    paths_test: "fold-paths/fold_5_paths.csv"
+
+PASTIS_LOW_fold2:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    paths_train: "fold-paths/folds_2_234_paths.csv"
+    paths_eval: "fold-paths/fold_5_paths.csv"
+    paths_test: "fold-paths/fold_1_paths.csv"
+
+PASTIS_LOW_fold3:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    paths_train: "fold-paths/folds_3_345_paths.csv"
+    paths_eval: "fold-paths/fold_1_paths.csv"
+    paths_test: "fold-paths/fold_2_paths.csv"
+
+PASTIS_LOW_fold4:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    paths_train: "fold-paths/folds_4_451_paths.csv"
+    paths_eval: "fold-paths/fold_2_paths.csv"
+    paths_test: "fold-paths/fold_3_paths.csv"
+
+PASTIS_LOW_fold5:
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    paths_train: "fold-paths/folds_5_512_paths.csv"
+    paths_eval: "fold-paths/fold_3_paths.csv"
+    paths_test: "fold-paths/fold_4_paths.csv"

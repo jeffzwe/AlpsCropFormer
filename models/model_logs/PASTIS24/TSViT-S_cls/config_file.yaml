@@ -1,0 +1,66 @@
+CHECKPOINT:
+  eval_steps: 1137
+  load_from_checkpoint: null
+  partial_restore: false
+  save_path: models/saved_models/PASTIS24/TSViT-S_cls
+  save_steps: 113600
+  train_metrics_steps: 1137
+DATASETS:
+  eval:
+    base_dir: /Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24
+    batch_size: 32
+    bidir_input: false
+    dataset: PASTIS24_fold1
+    extra_data: null
+    label_map: null
+    max_seq_len: 60
+    num_workers: 1
+    paths: /Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24/fold-paths/fold_4_paths.csv
+  train:
+    base_dir: /Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24
+    batch_size: 32
+    bidir_input: false
+    dataset: PASTIS24_fold1
+    extra_data: null
+    label_map: null
+    max_seq_len: 60
+    num_workers: 1
+    paths: /Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24/fold-paths/folds_1_123_paths.csv
+MODEL:
+  architecture: TSViTcls
+  device: !!python/object/apply:torch.device
+  - mps
+  dim: 64
+  dim_head: 32
+  dropout: 0.0
+  emb_dropout: 0.0
+  heads: 4
+  ignore_background: true
+  img_res: 24
+  max_seq_len: 60
+  num_channels: 11
+  num_classes: 19
+  num_features: 16
+  patch_size: 3
+  pool: cls
+  scale_dim: 4
+  spatial_depth: 4
+  temporal_depth: 8
+SOLVER:
+  alpha: null
+  class_weights: null
+  gamma: 1.0
+  loss_function: focal_loss
+  lr_base: 1e-3
+  lr_min: 5e-6
+  lr_scheduler: null
+  lr_start: 1e-8
+  num_cycles: 1
+  num_epochs: 100
+  num_warmup_epochs: 10
+  reset_lr: true
+  steps: (0, 80000)
+  weight_decay: 0.0
+local_device_ids:
+- 0
+- 1
