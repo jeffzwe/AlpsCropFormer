@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10  # Same Python version for consistency
+  - python=3.10
   - pip
   - numpy>=1.24,<2.0
   - pandas>=1.5,<2.4
@@ -13,7 +13,7 @@ dependencies:
   - tqdm>=4.60,<5.0
   - geopandas>=0.12,<1.2
   - rasterio>=1.3,<1.5
-  - llvm-openmp  # still okay on Linux
+  - llvm-openmp
   - pip:
       # Specify CUDA version for torch here, e.g., cuda 11.8, adjust if your cluster uses a different CUDA
       - torch>=2.0.1+cu118,<2.2.*  # CUDA 11.8 compatible PyTorch
