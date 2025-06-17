@@ -1,4 +1,4 @@
-# CropFormer: Early/In-Season Crop Classification from Satellite Imagery Time Series
+# AlpsCropFormer: Early/In-Season Crop Classification from Satellite Imagery Time Series
 
 This project adapts a sota model to Swiss agricultural data with a specific focus on early/in-season classification of various crops.
 
@@ -26,6 +26,23 @@ For the initial setup, please follow the instructions for downloading and instal
 
 - **Configuration**: Specify the base directory and paths for training and evaluation datasets within the `data/datasets.yaml` file.
 - **Experiment Configuration**: Use a distinct `.yaml` file for each experiment, located in the `configs` folder. These configuration files encapsulate default parameters aligned with those used in the featured research. Modify these `.yaml` files as necessary to accommodate custom datasets.
+
+### Training: Semantic Segmentation
+
+To train for semantic segmentation, execute the following command, replacing `**` with the appropriate directory names:
+
+        python train_and_eval/segmentation_training_transf.py --config_file configs/**/TSViT.yaml
+
+
+### Pre-trained checkpoints
+Download 5-fold PASTIS24 [pre-trained models and tensorboard files](https://drive.google.com/file/d/1AzWEtHxojuCjaIsekja4J54LuEb9e7kw/view?usp=share_link).
+
+
+## BibTex
+If you incorporate any data or code from this repository into your project, please acknowledge the source by citing the following work:
+
+```
+```
 
 ## License and Copyright
 

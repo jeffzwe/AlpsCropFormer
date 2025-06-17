@@ -2,31 +2,31 @@
 
 # PASTIS24 -------------------------------------------------------------------------------------------------
 PASTIS24_fold1:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_1_123_paths.csv"
     paths_eval: "fold-paths/fold_4_paths.csv"
     paths_test: "fold-paths/fold_5_paths.csv"
 
 PASTIS24_fold2:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_2_234_paths.csv"
     paths_eval: "fold-paths/fold_5_paths.csv"
     paths_test: "fold-paths/fold_1_paths.csv"
 
 PASTIS24_fold3:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_3_345_paths.csv"
     paths_eval: "fold-paths/fold_1_paths.csv"
     paths_test: "fold-paths/fold_2_paths.csv"
 
 PASTIS24_fold4:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_4_451_paths.csv"
     paths_eval: "fold-paths/fold_2_paths.csv"
     paths_test: "fold-paths/fold_3_paths.csv"
 
 PASTIS24_fold5:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_5_512_paths.csv"
     paths_eval: "fold-paths/fold_3_paths.csv"
     paths_test: "fold-paths/fold_4_paths.csv"
@@ -34,31 +34,47 @@ PASTIS24_fold5:
 # PASTIS_LOW ----------------------------------------------------------------------------------------------
 
 PASTIS_LOW_fold1:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_1_123_paths.csv"
     paths_eval: "fold-paths/fold_4_paths.csv"
     paths_test: "fold-paths/fold_5_paths.csv"
 
 PASTIS_LOW_fold2:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_2_234_paths.csv"
     paths_eval: "fold-paths/fold_5_paths.csv"
     paths_test: "fold-paths/fold_1_paths.csv"
 
 PASTIS_LOW_fold3:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_3_345_paths.csv"
     paths_eval: "fold-paths/fold_1_paths.csv"
     paths_test: "fold-paths/fold_2_paths.csv"
 
 PASTIS_LOW_fold4:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_4_451_paths.csv"
     paths_eval: "fold-paths/fold_2_paths.csv"
     paths_test: "fold-paths/fold_3_paths.csv"
 
 PASTIS_LOW_fold5:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_5_512_paths.csv"
     paths_eval: "fold-paths/fold_3_paths.csv"
     paths_test: "fold-paths/fold_4_paths.csv"
+
+
+# Sentinel -------------------------------------------------------------------------------------------------
+
+Sentinel_fold1:
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/Sentinel_mini
+    crop_train: "Sentinel_Crop_2022"
+    crop_eval: "Sentinel_Crop_2023"
+    crop_test: "Sentinel_Crop_2021"
+    gt_train: "Sentinel_GT_2022"
+    gt_eval: "Sentinel_GT_2023"
+    gt_test: "Sentinel_GT_2021"
+    temp_train: "Sentinel_Temp_2022"
+    temp_eval: "Sentinel_Temp_2023"
+    temp_test: "Sentinel_Temp_2021"
+    crop_map: "crop_mappings.csv"
