@@ -208,50 +208,70 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     config_file = args.config_file
-    print(args.device)
     device_ids = [int(d) for d in args.device.split(',')]
     lin_cls = args.lin
 
     device = get_device(device_ids, allow_cpu=True)  # Allow CPU for apple silicon compatibility
+    print("Using device: ", device)
 
     config = read_yaml(config_file)
     config['local_device_ids'] = device_ids
 
-    # dataloaders = get_dataloaders(config)
+    dataloaders = get_dataloaders(config)
     
-    #######   Testing   #############
-    from data.Sentinel.dataloader import Sentinel2Dataset
+    #######   Testing Dataloader   #############
     
-    DATASET_INFO = read_yaml("data/datasets.yaml")
+    train_iter = iter(dataloaders['train'])
+    try:
+        sample = next(train_iter)
+        print("Sample Input Dim: ", sample['inputs'].shape)
+        print("Mask Dim: ", sample['unk_masks'].shape)
+        print("Label Dim: ", sample['labels'].shape)
+    finally:
+        # Clean up resources
+        del train_iter
+        # Force garbage collection
+        import gc
+        gc.collect()
     
-    model_config = config['MODEL']
-    train_config = config['DATASETS']['train']
-    train_config['bidir_input'] = model_config['architecture'] == "ConvBiRNN"
-    eval_config  = config['DATASETS']['eval']
-    eval_config['bidir_input'] = model_config['architecture'] == "ConvBiRNN"
-    train_config['base_dir'] = DATASET_INFO[train_config['dataset']]['basedir']
-    crop_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_train'])
-    gt_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['gt_train'])
-    temp_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['temp_train'])
-    crop_map = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_map'])
-    temp_length= model_config['max_seq_len']
-    cropping_mode = model_config['cropping_mode']
+    #######   Testing Dataloader   #############
     
-    # 'base', 'sliding_window', 'temp_sw', 'temp_no_sw', 'temp_subsample'
-    dataset = Sentinel2Dataset(crop_path, gt_path, temp_path, label_sheet_file=crop_map, temporal_length=temp_length, 
-                                    truncate_portion=1.0, timestamp_mode='temp_subsample', cropping_mode=cropping_mode)
+    #######   Testing Dataset   #############
+    # from data.Sentinel.dataloader import Sentinel2Dataset
     
-    sample = dataset[0]
-    print("Image shape: ", sample['inputs'].shape)
-    print("Ground truth shape: ", sample['labels'].shape)
-    print("Time shape: ", sample['time_stamps'].shape)
-    print("Time first: ", sample['time_stamps'][0])
+    # DATASET_INFO = read_yaml("data/datasets.yaml")
     
+    # model_config = config['MODEL']
+    # train_config = config['DATASETS']['train']
+    # train_config['bidir_input'] = model_config['architecture'] == "ConvBiRNN"
+    # eval_config  = config['DATASETS']['eval']
+    # eval_config['bidir_input'] = model_config['architecture'] == "ConvBiRNN"
+    # train_config['base_dir'] = DATASET_INFO[train_config['dataset']]['basedir']
+    # crop_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_train'])
+    # gt_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['gt_train'])
+    # temp_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['temp_train'])
+    # crop_map = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_map'])
+    # temp_length= model_config['max_seq_len']
+    # cropping_mode = model_config['cropping_mode']
+    # img_res = model_config['img_res']
     
+    # # 'base', 'sliding_window', 'temp_sw', 'temp_no_sw', 'temp_subsample'
+    # dataset = Sentinel2Dataset(crop_path, gt_path, temp_path, label_sheet_file=crop_map, temporal_length=temp_length, 
+    #                                 truncate_portion=1.0, timestamp_mode='temp_subsample', cropping_mode=cropping_mode,
+    #                                 img_res=img_res)
     
+    # inputs, unk_masks, labels = dataset[0]
+    # print("Image shape: ", inputs[0].shape)
+    # print("Ground truth shape: ", labels[0].shape)
+    # print("Unk mask: ", unk_masks[0].shape)
     
+    # print("Image shape: ", len(inputs))
+    # print("Ground truth shape: ", len(labels))
+    # print("Unk mask: ", len(unk_masks))
     
-    #######   Testing   #############
+    # print("Unique labels:", np.unique(labels[0]))
+    
+    #######   Testing Dataset  #############
 
     # net = get_model(config, device)
 

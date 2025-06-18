@@ -1,10 +1,10 @@
 MODEL:
   architecture:  "TSViT"
-  img_res: 24
+  img_res: 32
   max_seq_len: 24
-  num_channels: 11
+  num_channels: 10
   num_features: 16
-  num_classes: 19
+  num_classes: 53
   ignore_background: False
   dropout: 0.
   patch_size: 2
@@ -18,31 +18,28 @@ MODEL:
   scale_dim: 4
   truncate_portion: 1.0
   timestamp_mode: 'base'   # 'base', 'sliding_window', 'temp_sw', 'temp_no_sw', 'temp_subsample'
-  cropping_mode: 'random'
+  cropping_mode: 'random'     # 'random', 'all'
 
 
 DATASETS:
   train:
     dataset: "Sentinel_fold1"
     label_map:
-    max_seq_len: 60
-    batch_size: 16
+    batch_size: 8
     extra_data:
     num_workers: 4
 
   eval:
     dataset: "Sentinel_fold1"
     label_map:
-    max_seq_len: 60
-    batch_size: 24
+    batch_size: 8
     extra_data:
     num_workers: 4
 
   test:
     dataset: "Sentinel_fold1"
     label_map:
-    max_seq_len: 60
-    batch_size: 24
+    batch_size: 8
     extra_data:
     num_workers: 4
 

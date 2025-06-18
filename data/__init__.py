@@ -35,7 +35,8 @@ def get_dataloaders(config):
             crop_path=train_config['crop_paths'], gt_path=train_config['gt_paths'],
             temp_path=train_config['temp_paths'], crop_map=train_config['crop_map'], truncate_portion= model_config['truncate_portion'],
             timestamp_mode=model_config['timestamp_mode'], temp_length= model_config['max_seq_len'], cropping_mode=model_config['cropping_mode'],
-            batch_size=train_config['batch_size'], shuffle=True, num_workers=train_config['num_workers']
+            img_res = model_config['img_res'], batch_size=train_config['batch_size'], shuffle=True, num_workers=train_config['num_workers'],
+            is_training=True
         )
         
     # EVAL data --------------------------------------------------------------------------------------------------------
@@ -56,7 +57,8 @@ def get_dataloaders(config):
             crop_path=eval_config['crop_paths'], gt_path=eval_config['gt_paths'],
             temp_path=eval_config['temp_paths'], crop_map=eval_config['crop_map'], truncate_portion= model_config['truncate_portion'],
             timestamp_mode=model_config['timestamp_mode'], temp_length= model_config['max_seq_len'], cropping_mode=model_config['cropping_mode'],
-            batch_size=eval_config['batch_size'], shuffle=False, num_workers=eval_config['num_workers']
+            img_res = model_config['img_res'], batch_size=eval_config['batch_size'], shuffle=False, num_workers=eval_config['num_workers'],
+            is_training=False
         )
         
     # TEST data --------------------------------------------------------------------------------------------------------

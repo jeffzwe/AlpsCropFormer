@@ -14,7 +14,9 @@ def Sentinel_transform(
     truncate_portion=1.0, 
     condition='open_sky',
     timestamp_mode='base',
-    cropping_mode='random'
+    cropping_mode='random',  # Changed from cropping_select_k to cropping_mode
+    img_res=24,  # Default image resolution
+    is_training=True
 ):
     """
     Create a transform pipeline for Sentinel-2 data
@@ -41,9 +43,10 @@ def Sentinel_transform(
     transform_list.append(Normalize(channel_means, channel_stds))
     transform_list.append(TileDates())  # Add time_stamps as an additional channel
     transform_list.append(RandomRotate())
-    transform_list.append(ToTensor())
-    transform_list.append(UnkMask())  # Add UnkMask transformation
-    transform_list.append(FormatOutput())
+    transform_list.append(UnkMask())    # Generate unknown masks with numpy arrays
+    transform_list.append(RandomCrop(img_res, cropping_mode, is_training))  # Updated parameter name
+    
+    # No ToTensor class - we'll handle tensor conversion in the collate function
     
     return transforms.Compose(transform_list)
 
@@ -64,51 +67,110 @@ class TileDates(object):
         # Concatenate time_stamps as an additional channel
         images_with_time = np.concatenate([images, tiled_timestamps], axis=3)
         
-        return images_with_time, time_stamps, cloud_mask, ground_truth
+        return images_with_time, cloud_mask, ground_truth
 
 class UnkMask(object):
     """
     Create an unknown mask from cloud_mask
     """
     def __call__(self, sample):
-        images, time_stamps, cloud_mask, ground_truth = sample
+        images, cloud_mask, ground_truth = sample
         
         # Create unknown mask based on cloud_mask (valid = not cloudy)
         # Assuming cloud_mask == 1 means cloudy and cloud_mask == 0 means clear
-        unk_masks = (cloud_mask == 0).to(torch.bool)
+        # unk_masks = (cloud_mask == 0).astype(np.bool_)
         
-        return images, time_stamps, unk_masks, ground_truth
+        # Create unknown mask as all ones with shape H×W×1
+        # Extract height and width from cloud_mask
+        H, W = cloud_mask.shape[1], cloud_mask.shape[2]
+        
+        # Create a numpy array of ones with shape H×W×1 (using numpy instead of torch)
+        unk_masks = np.ones((H, W), dtype=np.bool_)
+        
+        return images, unk_masks, ground_truth
 
-class FormatOutput(object):
+class RandomCrop(object):
     """
-    Format final output as a dictionary for model input
+    Crop patches of size img_res × img_res from the input image.
+    
+    When cropping_mode='random': randomly select one valid patch (excluding patches with only label 0)
+    When cropping_mode='all': include all possible patches regardless of labels
     """
+    def __init__(self, img_res=24, cropping_mode='random', is_training=True):
+        self.img_res = img_res
+        self.cropping_mode = cropping_mode
+        self.is_training = is_training
+        
     def __call__(self, sample):
-        images, time_stamps, unk_masks, ground_truth = sample
+        images, unk_masks, ground_truth = sample
         
-        # Create a dictionary with the proper keys
-        return {
-            'inputs': images,
-            'time_stamps': time_stamps,
-            'labels': ground_truth,
-            'unk_masks': unk_masks,  # Use the generated unk_masks
-            'seq_lengths': images.shape[0]
-        }
-
-class ToTensor(object):
-    """
-    Convert numpy arrays to torch tensors
-    """
-    def __call__(self, sample):
-        images, time_stamps, cloud_mask, ground_truth = sample
+        # Get the original dimensions
+        T, H, W, C = images.shape
         
-        # Convert to torch tensors
-        images = torch.from_numpy(images.copy())
-        ground_truth = torch.from_numpy(ground_truth.copy())
-        time_stamps = torch.from_numpy(time_stamps)
-        cloud_mask = torch.from_numpy(cloud_mask.copy())
+        # Calculate how many patches we can get in each dimension
+        num_h_patches = H // self.img_res
+        num_w_patches = W // self.img_res
         
-        return images, time_stamps, cloud_mask, ground_truth
+        if self.cropping_mode == 'all':
+            # Include all patches regardless of labels
+            selected_patches = []
+            for h in range(num_h_patches):
+                for w in range(num_w_patches):
+                    selected_patches.append((h * self.img_res, w * self.img_res))
+            
+        elif self.cropping_mode == 'random':
+            # List to store valid patch coordinates (h_start, w_start)
+            valid_patches = []
+            
+            # Check all possible patch positions
+            for h in range(num_h_patches):
+                for w in range(num_w_patches):
+                    h_start = h * self.img_res
+                    w_start = w * self.img_res
+                    
+                    # Extract the corresponding ground truth patch
+                    gt_patch = ground_truth[h_start:h_start+self.img_res, w_start:w_start+self.img_res]
+                    
+                    # Check if the patch contains ONLY label 0 (discard if true)
+                    unique_labels = np.unique(gt_patch)
+                    if not (len(unique_labels) == 1 and unique_labels[0] == 0):
+                        valid_patches.append((h_start, w_start))
+            
+            # If no valid patches found, include all patches
+            if not valid_patches:
+                for h in range(num_h_patches):
+                    for w in range(num_w_patches):
+                        valid_patches.append((h * self.img_res, w * self.img_res))
+                print(f"Warning: No valid patches found. Including all patches.")
+                
+            # print(f"Found {len(valid_patches)} valid patches.")
+            
+            if self.is_training:
+                # Select one random patch from valid_patches
+                selected_patches = [random.choice(valid_patches)]
+            else:
+                # Select first valid patch for evaluation/testing
+                selected_patches = [valid_patches[0]]
+        
+        else:
+            raise ValueError(f"Invalid cropping_mode: {self.cropping_mode}. Must be 'random' or 'all'.")
+        
+        # Extract the selected patches
+        cropped_images = []
+        cropped_unk_masks = []
+        cropped_ground_truths = []
+        
+        for h_start, w_start in selected_patches:
+            # Extract patches
+            patch_img = images[:, h_start:h_start+self.img_res, w_start:w_start+self.img_res, :]
+            patch_unk_mask = unk_masks[h_start:h_start+self.img_res, w_start:w_start+self.img_res]
+            patch_gt = ground_truth[h_start:h_start+self.img_res, w_start:w_start+self.img_res]
+            
+            cropped_images.append(patch_img)
+            cropped_unk_masks.append(patch_unk_mask)
+            cropped_ground_truths.append(patch_gt)
+        
+        return cropped_images, cropped_unk_masks, cropped_ground_truths
 
 class Normalize(object):
     """
@@ -135,16 +197,16 @@ class RandomRotate(object):
         self.probability = probability
         
     def __call__(self, sample):
-        images, time_stamps, cloud_mask, ground_truth = sample
+        images, cloud_mask, ground_truth = sample
         
         # Augmentation
         if random.random() < self.probability:
             k = random.randint(1, 3)
-            images = np.rot90(images, k=k, axes=(2, 3))
+            images = np.rot90(images, k=k, axes=(1, 2))
             if ground_truth.ndim == 2:
                 ground_truth = np.rot90(ground_truth, k=k, axes=(0, 1))
                 
-        return images, time_stamps, cloud_mask, ground_truth
+        return images, cloud_mask, ground_truth
 
 class RemoveDuplicateTimestamps(object):
     """
@@ -324,4 +386,3 @@ class TemperatureCalendarNoSlidingSubsample(object):
         new_time_stamps = temp_cal[indices]
         
         return images[:, indices, ...], new_time_stamps, cloud_mask[indices], ground_truth
-
