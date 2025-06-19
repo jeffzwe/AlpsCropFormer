@@ -64,7 +64,7 @@ def get_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncat
 
 
 def get_distr_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_portion, timestamp_mode, cropping_mode, img_res,
-                            is_training, world_size, rank, batch_size=32, num_workers=4, shuffle=True):
+                            is_training, world_size, rank, batch_size=32, num_workers=4, shuffle=False):
     """
     return a distributed dataloader
     """
