@@ -12,7 +12,7 @@ def get_loss(config, device, reduction='mean'):
     model_config = config['MODEL']
     loss_config = config['SOLVER']
 
-    print(loss_config['loss_function'])
+    # print(loss_config['loss_function'])
 
     if type(loss_config['loss_function']) in [list, tuple]:
         loss_fun = []

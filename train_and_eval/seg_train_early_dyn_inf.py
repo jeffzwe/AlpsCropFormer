@@ -339,6 +339,10 @@ if __name__ == "__main__":
     print("Sample Input Dim: ", sample['inputs'].shape)
     print("Mask Dim: ", sample['unk_masks'].shape)
     print("Label Dim: ", sample['labels'].shape)
+    
+    print("Type of unk_masks_list:", sample['unk_masks'].dtype)
+    print("Type of ground truth list:", sample['labels'].dtype)
+    print("Type of images_list:", sample['inputs'].dtype)
 
     # net = get_model(config, device)
 

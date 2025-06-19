@@ -212,7 +212,6 @@ if __name__ == "__main__":
     lin_cls = args.lin
 
     device = get_device(device_ids, allow_cpu=True)  # Allow CPU for apple silicon compatibility
-    print("Using device: ", device)
 
     config = read_yaml(config_file)
     config['local_device_ids'] = device_ids
@@ -221,18 +220,18 @@ if __name__ == "__main__":
     
     #######   Testing Dataloader   #############
     
-    train_iter = iter(dataloaders['train'])
-    try:
-        sample = next(train_iter)
-        print("Sample Input Dim: ", sample['inputs'].shape)
-        print("Mask Dim: ", sample['unk_masks'].shape)
-        print("Label Dim: ", sample['labels'].shape)
-    finally:
-        # Clean up resources
-        del train_iter
-        # Force garbage collection
-        import gc
-        gc.collect()
+    # train_iter = iter(dataloaders['train'])
+    # try:
+    #     sample = next(train_iter)
+    #     print("Sample Input Dim: ", sample['inputs'].shape)
+    #     print("Mask Dim: ", sample['unk_masks'].shape)
+    #     print("Label Dim: ", sample['labels'].shape)
+    # finally:
+    #     # Clean up resources
+    #     del train_iter
+    #     # Force garbage collection
+    #     import gc
+    #     gc.collect()
     
     #######   Testing Dataloader   #############
     
@@ -273,6 +272,6 @@ if __name__ == "__main__":
     
     #######   Testing Dataset  #############
 
-    # net = get_model(config, device)
+    net = get_model(config, device)
 
-    # train_and_evaluate(net, dataloaders, config, device)
+    train_and_evaluate(net, dataloaders, config, device)

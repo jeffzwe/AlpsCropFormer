@@ -36,10 +36,10 @@ def my_collate(batch):
         
         # Process each element in the lists
         for i in range(len(images_list)):
-            # Convert numpy arrays to tensors
-            all_inputs.append(torch.from_numpy(images_list[i].copy()))
+            # Convert numpy arrays to float32 tensors
+            all_inputs.append(torch.from_numpy(images_list[i].copy()).float())
             all_unk_masks.append(torch.from_numpy(unk_masks_list[i].copy()).unsqueeze(-1))
-            all_labels.append(torch.from_numpy(ground_truth_list[i].copy()).unsqueeze(-1))
+            all_labels.append(torch.from_numpy(ground_truth_list[i].copy()).float().unsqueeze(-1))
     
     # Stack all elements into tensors
     return {
