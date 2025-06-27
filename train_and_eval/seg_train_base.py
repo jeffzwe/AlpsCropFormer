@@ -201,7 +201,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('--config_file', help='configuration (.yaml) file to use')
-    parser.add_argument('--device', default='0,1', type=str,
+    parser.add_argument('--device', default='0', type=str,
                          help='gpu ids to use')
     parser.add_argument('--lin', action='store_true',
                          help='train linear classifier only')
@@ -242,9 +242,7 @@ if __name__ == "__main__":
     
     # model_config = config['MODEL']
     # train_config = config['DATASETS']['train']
-    # train_config['bidir_input'] = model_config['architecture'] == "ConvBiRNN"
     # eval_config  = config['DATASETS']['eval']
-    # eval_config['bidir_input'] = model_config['architecture'] == "ConvBiRNN"
     # train_config['base_dir'] = DATASET_INFO[train_config['dataset']]['basedir']
     # crop_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_train'])
     # gt_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['gt_train'])

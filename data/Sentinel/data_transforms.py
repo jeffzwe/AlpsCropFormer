@@ -14,7 +14,6 @@ def Sentinel_transform(
     truncate_portion=1.0, 
     condition='open_sky',
     timestamp_mode='base',
-    cropping_mode='random',  # Changed from cropping_select_k to cropping_mode
     img_res=24,  # Default image resolution
     is_training=True
 ):
@@ -41,10 +40,10 @@ def Sentinel_transform(
     
     # Final transformations
     transform_list.append(Normalize(channel_means, channel_stds))
-    transform_list.append(TileDates())  # Add time_stamps as an additional channel
+    transform_list.append(TileDates(timestamp_mode))  # Add time_stamps as an additional channel
     transform_list.append(RandomRotate())
     transform_list.append(UnkMask())    # Generate unknown masks with numpy arrays
-    transform_list.append(RandomCrop(img_res, cropping_mode, is_training))  # Updated parameter name
+    transform_list.append(RandomCrop(img_res, is_training))  # Updated parameter name
     
     # No ToTensor class - we'll handle tensor conversion in the collate function
     
@@ -55,8 +54,18 @@ class TileDates(object):
     Tile the time_stamps to H×W dimensions and concatenate as an additional channel.
     After Normalize(), images have shape T×H×W×C
     """
+    def __init__(self, cropping_mode='random'):
+        self.cropping_mode = cropping_mode
     def __call__(self, sample):
         images, time_stamps, cloud_mask, ground_truth = sample
+        
+        # Normalize time_stamps
+        if self.cropping_mode == 'base' or self.cropping_mode == 'sliding_window':
+            # We have day of year data
+            time_stamps = (time_stamps - 1) / 365.0  # Normalize to [0, 1] range
+        else:
+            # We have temperature calendar data: multiple methods but we use a cube square root
+            time_stamps = np.cbrt(time_stamps)
         
         # After Normalize(), images already have shape T×H×W×C
         T, H, W, C = images.shape
@@ -92,13 +101,9 @@ class UnkMask(object):
 class RandomCrop(object):
     """
     Crop patches of size img_res × img_res from the input image.
-    
-    When cropping_mode='random': randomly select one valid patch (excluding patches with only label 0)
-    When cropping_mode='all': include all possible patches regardless of labels
     """
-    def __init__(self, img_res=24, cropping_mode='random', is_training=True):
+    def __init__(self, img_res=24, is_training=True):
         self.img_res = img_res
-        self.cropping_mode = cropping_mode
         self.is_training = is_training
         
     def __call__(self, sample):
@@ -107,53 +112,34 @@ class RandomCrop(object):
         # Get the original dimensions
         T, H, W, C = images.shape
         
+        # Calculate padding needed to make H (and W) a multiple of img_res
+        pad_size = (self.img_res - H % self.img_res) % self.img_res
+        
+        # Zero pad if needed
+        if pad_size > 0:
+            images = np.pad(images, ((0, 0), (0, pad_size), (0, pad_size), (0, 0)), mode='constant', constant_values=0)
+            # Pad unk_masks with 1s
+            unk_masks = np.pad(unk_masks, ((0, pad_size), (0, pad_size)), mode='constant', constant_values=1)
+            # Pad ground_truth with 0s
+            ground_truth = np.pad(ground_truth, ((0, pad_size), (0, pad_size)), mode='constant', constant_values=0)
+        
+        # Update dimensions after padding
+        T, H, W, C = images.shape
+        
         # Calculate how many patches we can get in each dimension
-        num_h_patches = H // self.img_res
-        num_w_patches = W // self.img_res
+        num_patches = H // self.img_res
         
-        if self.cropping_mode == 'all':
-            # Include all patches regardless of labels
-            selected_patches = []
-            for h in range(num_h_patches):
-                for w in range(num_w_patches):
-                    selected_patches.append((h * self.img_res, w * self.img_res))
-            
-        elif self.cropping_mode == 'random':
-            # List to store valid patch coordinates (h_start, w_start)
-            valid_patches = []
-            
-            # Check all possible patch positions
-            for h in range(num_h_patches):
-                for w in range(num_w_patches):
-                    h_start = h * self.img_res
-                    w_start = w * self.img_res
-                    
-                    # Extract the corresponding ground truth patch
-                    gt_patch = ground_truth[h_start:h_start+self.img_res, w_start:w_start+self.img_res]
-                    
-                    # Check if the patch contains ONLY label 0 (discard if true)
-                    unique_labels = np.unique(gt_patch)
-                    if not (len(unique_labels) == 1 and unique_labels[0] == 0):
-                        valid_patches.append((h_start, w_start))
-            
-            # If no valid patches found, include all patches
-            if not valid_patches:
-                for h in range(num_h_patches):
-                    for w in range(num_w_patches):
-                        valid_patches.append((h * self.img_res, w * self.img_res))
-                print(f"Warning: No valid patches found. Including all patches.")
-                
-            # print(f"Found {len(valid_patches)} valid patches.")
-            
-            if self.is_training:
-                # Select one random patch from valid_patches
-                selected_patches = [random.choice(valid_patches)]
-            else:
-                # Select first valid patch for evaluation/testing
-                selected_patches = [valid_patches[0]]
-        
+        if self.is_training:
+            # Training: randomly select one patch regardless of labels
+            h_idx = random.randint(0, num_patches - 1)
+            w_idx = random.randint(0, num_patches - 1)
+            selected_patches = [(h_idx * self.img_res, w_idx * self.img_res)]
         else:
-            raise ValueError(f"Invalid cropping_mode: {self.cropping_mode}. Must be 'random' or 'all'.")
+            # Evaluation: return all patches
+            selected_patches = []
+            for h in range(num_patches):
+                for w in range(num_patches):
+                    selected_patches.append((h * self.img_res, w * self.img_res))
         
         # Extract the selected patches
         cropped_images = []
@@ -384,5 +370,24 @@ class TemperatureCalendarNoSlidingSubsample(object):
         total = images.shape[1]
         indices = np.linspace(0, total - 1, self.temporal_length, dtype=int)
         new_time_stamps = temp_cal[indices]
+        
+        return images[:, indices, ...], new_time_stamps, cloud_mask[indices], ground_truth
+        return images[:, indices, ...], time_stamps[indices], cloud_mask[indices], ground_truth
+
+class TemperatureCalendarNoSlidingSubsample(object):
+    """
+    Subsample time dimension using temperature calendar and linear indices
+    """
+    def __init__(self, temporal_length):
+        self.temporal_length = temporal_length
+        
+    def __call__(self, sample):
+        images, time_stamps, cloud_mask, temp_cal, ground_truth = sample
+        
+        total = images.shape[1]
+        indices = np.linspace(0, total - 1, self.temporal_length, dtype=int)
+        new_time_stamps = temp_cal[indices]
+        
+        return images[:, indices, ...], new_time_stamps, cloud_mask[indices], ground_truth
         
         return images[:, indices, ...], new_time_stamps, cloud_mask[indices], ground_truth

@@ -2,3 +2,5 @@ __pycache__/
 models/model_logs/
 datasets/
 .DS_Store
+.venv3.10/
+.venv3.12/

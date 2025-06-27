@@ -1,6 +1,6 @@
 MODEL:
   architecture:  "TSViT"
-  img_res: 24
+  img_res: 16
   max_seq_len: 60
   num_channels: 11
   num_features: 16
@@ -22,7 +22,7 @@ DATASETS:
     dataset: "PASTIS_LOW_fold1"
     label_map:
     max_seq_len: 60
-    batch_size: 16
+    batch_size: 32
     extra_data:
     num_workers: 4
 
@@ -30,7 +30,7 @@ DATASETS:
     dataset: "PASTIS_LOW_fold1"
     label_map:
     max_seq_len: 60
-    batch_size: 16
+    batch_size: 32
     extra_data:
     num_workers: 4
 
@@ -60,9 +60,9 @@ SOLVER:
   confidence_threshold: 0.99
 
 CHECKPOINT:
-  load_from_checkpoint: models/model_logs/PASTIS_LOW/TSViT-S_fold1.early/best.pth
+  load_from_checkpoint:
   partial_restore: False
-  save_path: 'models/model_logs/PASTIS_LOW/TSViT-S_fold1.early.print'
-  train_metrics_steps: 20000000000
-  eval_steps: 1 #1830
+  save_path: 'models/model_logs/PASTIS_LOW/TSViT-S_fold1.img16'
+  train_metrics_steps: 184
+  eval_steps: 184
   save_steps: 20000000000

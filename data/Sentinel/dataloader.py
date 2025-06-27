@@ -48,34 +48,24 @@ def my_collate(batch):
         'unk_masks': torch.stack(all_unk_masks)
     }
 
-def get_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_portion, timestamp_mode, cropping_mode, img_res,
+def get_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_portion, timestamp_mode, img_res,
                             is_training, batch_size=32, num_workers=4, shuffle=True):
     
-    if cropping_mode == 'all':
-        if batch_size < 16:
-            raise ValueError("For batch_sizes smaller than 16 one can only use cropping_mode == 'random'")
-        batch_size = batch_size // 16
-    
     dataset = Sentinel2Dataset(crop_path, gt_path, temp_path, label_sheet_file=crop_map, temporal_length=temp_length, img_res=img_res,
-                               truncate_portion=truncate_portion, timestamp_mode=timestamp_mode, cropping_mode=cropping_mode, is_training=is_training)
+                               truncate_portion=truncate_portion, timestamp_mode=timestamp_mode, is_training=is_training)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0,
                                              collate_fn=my_collate)
     return dataloader
 
 
-def get_distr_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_portion, timestamp_mode, cropping_mode, img_res,
+def get_distr_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_portion, timestamp_mode, img_res,
                             is_training, world_size, rank, batch_size=32, num_workers=4, shuffle=False):
     """
     return a distributed dataloader
     """
-    if cropping_mode == 'all':
-        if batch_size < 16:
-            raise ValueError("For batch_sizes smaller than 16 one can only use cropping_mode == 'random'")
-        batch_size = batch_size // 16
-        
     
     dataset = Sentinel2Dataset(crop_path, gt_path, temp_path, label_sheet_file=crop_map, temporal_length=temp_length, img_res=img_res,
-                               truncate_portion=truncate_portion, timestamp_mode=timestamp_mode, cropping_mode=cropping_mode, is_training=is_training)
+                               truncate_portion=truncate_portion, timestamp_mode=timestamp_mode, is_training=is_training)
     sampler = torch.utils.data.distributed.DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers,
                                              pin_memory=True, sampler=sampler, collate_fn=my_collate)
@@ -99,7 +89,6 @@ class Sentinel2Dataset(Dataset):
         seed=42,
         timestamp_mode='base',
         truncate_portion=1.0,  # Portion of time dimension to keep (1.0 = no truncation)
-        cropping_mode='random',  # Changed from cropping_select_k to cropping_mode
         img_res = 24,
         is_training=True
     ):
@@ -113,7 +102,6 @@ class Sentinel2Dataset(Dataset):
         self.condition = condition
         self.timestamp_mode = timestamp_mode
         self.truncate_portion = truncate_portion
-        self.cropping_mode = cropping_mode
         self.img_res = img_res
         self.is_training = is_training
 
@@ -153,7 +141,6 @@ class Sentinel2Dataset(Dataset):
             truncate_portion=self.truncate_portion,
             condition=self.condition,
             timestamp_mode=self.timestamp_mode,
-            cropping_mode=self.cropping_mode,
             img_res=self.img_res,
             is_training=self.is_training
         )

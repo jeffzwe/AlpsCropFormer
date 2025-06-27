@@ -396,7 +396,8 @@ class TSViT(nn.Module):
         self.to_patch_embedding = nn.Sequential(
             Rearrange('b t c (h p1) (w p2) -> (b h w) t (p1 p2 c)', p1=self.patch_size, p2=self.patch_size),
             nn.Linear(patch_dim, self.dim),)
-        self.to_temporal_embedding_input = nn.Linear(366, self.dim)
+        # self.to_temporal_embedding_input = nn.Linear(366, self.dim)
+        self.to_temporal_embedding_input = nn.Linear(1, self.dim)  # 1D input instead of 366D
         nn.init.xavier_uniform_(self.to_temporal_embedding_input.weight)
         nn.init.zeros_(self.to_temporal_embedding_input.bias)
         self.temporal_token = nn.Parameter(torch.randn(1, self.num_classes, self.dim))
@@ -418,11 +419,14 @@ class TSViT(nn.Module):
 
         xt = x[:, :, -1, 0, 0]
         x = x[:, :, :-1]
-        xt = (xt * 365.0001).to(torch.int64)
-        xt = F.one_hot(xt, num_classes=366).to(torch.float32)
+        # xt = (xt * 365.0001).to(torch.int64)
+        # xt = F.one_hot(xt, num_classes=366).to(torch.float32)
 
-        xt = xt.reshape(-1, 366)
-        temporal_pos_embedding = self.to_temporal_embedding_input(xt).reshape(B, T, self.dim)
+        # xt = xt.reshape(-1, 366)
+        # temporal_pos_embedding = self.to_temporal_embedding_input(xt).reshape(B, T, self.dim)
+            # Direct continuous embedding - no one-hot encoding needed!
+        xt = xt.unsqueeze(-1)  # Shape: [B, T, 1]
+        temporal_pos_embedding = self.to_temporal_embedding_input(xt)
         x = self.to_patch_embedding(x)
         x = x.reshape(B, -1, T, self.dim)
         x += temporal_pos_embedding.unsqueeze(1)

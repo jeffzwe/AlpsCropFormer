@@ -1,6 +1,6 @@
 MODEL:
   architecture:  "TSViT"
-  img_res: 32
+  img_res: 16
   max_seq_len: 24
   num_channels: 10
   num_features: 16
@@ -17,8 +17,7 @@ MODEL:
   emb_dropout: 0.
   scale_dim: 4
   truncate_portion: 1.0
-  timestamp_mode: 'base'   # 'base', 'sliding_window', 'temp_sw', 'temp_no_sw', 'temp_subsample'
-  cropping_mode: 'random'     # 'random', 'all'
+  timestamp_mode: 'temp_subsample'   # 'base', 'sliding_window', 'temp_sw', 'temp_no_sw', 'temp_subsample'
 
 
 DATASETS:
@@ -32,21 +31,20 @@ DATASETS:
   eval:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 8
+    batch_size: 1    # batch size 1 for evaluation. All img_res x img_res patches per sample image
     extra_data:
     num_workers: 4
 
   test:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 8
+    batch_size: 1   # batch size 1 for test. All img_res x img_res patches per sample image
     extra_data:
     num_workers: 4
 
 SOLVER:
-  num_epochs: 100
+  num_epochs: 5
   num_warmup_epochs: 10
-  steps: (0, 80000)
   loss_function:  masked_cross_entropy
   class_weights:
   lr_scheduler: 'cosine'

@@ -107,6 +107,15 @@ def evaluate(net, evalloader, loss_fn, device, loss_input_fn, config, is_distrib
 
     un_labels, class_loss = get_per_class_loss(losses, target_classes, unk_masks=None)
 
+    # Only print detailed results on main process
+    if not is_distributed or dist.get_rank() == 0:
+        print("-" * 145)
+        print("Mean (micro) Evaluation metrics (micro/macro), loss: %.7f, iou: %.4f/%.4f, accuracy: %.4f/%.4f, "
+              "precision: %.4f/%.4f, recall: %.4f/%.4f, F1: %.4f/%.4f, unique pred labels: %s" %
+              (losses.mean(), micro_IOU, macro_IOU, micro_acc, macro_acc, micro_precision, macro_precision,
+               micro_recall, macro_recall, micro_F1, macro_F1, np.unique(predicted_classes)))
+        print("-" * 145)
+
     return (un_labels,
             {"macro": {"Loss": losses.mean(), "Accuracy": macro_acc, "Precision": macro_precision,
                        "Recall": macro_recall, "F1": macro_F1, "IOU": macro_IOU},
@@ -117,7 +126,7 @@ def evaluate(net, evalloader, loss_fn, device, loss_input_fn, config, is_distrib
             )
 
 
-def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, lin_cls=False):
+def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, test_only=False):
     """Main training and evaluation function with DDP support"""
     
     is_distributed = world_size > 1
@@ -132,19 +141,25 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, l
     save_steps = config['CHECKPOINT']["save_steps"]
     save_path = config['CHECKPOINT']["save_path"]
     checkpoint = config['CHECKPOINT']["load_from_checkpoint"]
-    num_steps_train = len(dataloaders['train'])
     weight_decay = get_params_values(config['SOLVER'], "weight_decay", 0)
 
     start_global = 1
     start_epoch = 1
     
-    if checkpoint and is_main_process:
+    # For test mode, checkpoint is required
+    if test_only and not checkpoint:
+        raise ValueError("Checkpoint must be provided for test-only mode")
+    
+    if checkpoint:
         load_from_checkpoint(net, checkpoint, partial_restore=False)
 
     if is_main_process:
         print("Device: ", device)
         print("World size: ", world_size)
-        print("Current learn rate: ", lr)
+        if test_only:
+            print("Running in TEST-ONLY mode")
+        else:
+            print("Current learn rate: ", lr)
 
     # Move model to device before DDP wrapping
     net.to(device)
@@ -157,13 +172,58 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, l
     if save_path and is_main_process and (not os.path.exists(save_path)):
         os.makedirs(save_path)
 
-    if is_main_process:
+    if is_main_process and not test_only:
         copy_yaml(config)
 
     loss_input_fn = get_loss_data_input(config)
     loss_fn = {'all': get_loss(config, device, reduction=None),
                'mean': get_loss(config, device, reduction="mean")}
 
+    # Test-only mode: run evaluation on test set and exit
+    if test_only:
+        if 'test' not in dataloaders:
+            raise ValueError("Test dataloader not found. Make sure test data is configured.")
+        
+        if is_main_process:
+            print("Running test evaluation...")
+        
+        test_metrics = evaluate(net, dataloaders['test'], loss_fn, device, loss_input_fn, config, is_distributed)
+        
+        # Synchronize before printing results
+        if is_distributed:
+            dist.barrier()
+        
+        if is_main_process:
+            print("="*100)
+            print("TEST RESULTS:")
+            print("="*100)
+            print("Test Loss: %.7f" % test_metrics[1]['macro']['Loss'])
+            print("Test Macro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f" % 
+                  (test_metrics[1]['macro']['Accuracy'], test_metrics[1]['macro']['Precision'],
+                   test_metrics[1]['macro']['Recall'], test_metrics[1]['macro']['F1'], test_metrics[1]['macro']['IOU']))
+            print("Test Micro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f" % 
+                  (test_metrics[1]['micro']['Accuracy'], test_metrics[1]['micro']['Precision'],
+                   test_metrics[1]['micro']['Recall'], test_metrics[1]['micro']['F1'], test_metrics[1]['micro']['IOU']))
+            print("="*100)
+            
+            # Save test results to file
+            if save_path:
+                results_file = os.path.join(save_path, "test_results.txt")
+                with open(results_file, 'w') as f:
+                    f.write("TEST RESULTS:\n")
+                    f.write("="*50 + "\n")
+                    f.write("Test Loss: %.7f\n" % test_metrics[1]['macro']['Loss'])
+                    f.write("Test Macro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f\n" % 
+                            (test_metrics[1]['macro']['Accuracy'], test_metrics[1]['macro']['Precision'],
+                             test_metrics[1]['macro']['Recall'], test_metrics[1]['macro']['F1'], test_metrics[1]['macro']['IOU']))
+                    f.write("Test Micro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f\n" % 
+                            (test_metrics[1]['micro']['Accuracy'], test_metrics[1]['micro']['Precision'],
+                             test_metrics[1]['micro']['Recall'], test_metrics[1]['micro']['F1'], test_metrics[1]['micro']['IOU']))
+                print(f"Test results saved to: {results_file}")
+        
+        return test_metrics
+
+    num_steps_train = len(dataloaders['train'])
     trainable_params = get_net_trainable_params(net)
     optimizer = optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
     scheduler = build_scheduler(config, optimizer, num_steps_train)
@@ -219,6 +279,10 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, l
             if abs_step % eval_steps == 0:
                 eval_metrics = evaluate(net, dataloaders['eval'], loss_fn, device, loss_input_fn, config, is_distributed)
                 
+                # Synchronize before handling results
+                if is_distributed:
+                    dist.barrier()
+                
                 # Only main process handles evaluation logging and best model saving
                 if is_main_process:
                     current_iou = eval_metrics[1]['macro']['IOU']
@@ -251,12 +315,15 @@ def main_worker(rank, world_size, config, args):
     if world_size > 1:
         setup_ddp(rank, world_size)
     
-    device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
+    device = get_device(device_ids, allow_cpu=True)
     
     try:
         dataloaders = get_distributed_dataloaders(config, world_size, rank)
         net = get_model(config, device)
-        train_and_evaluate(net, dataloaders, config, device, rank, world_size, args.lin)
+        train_and_evaluate(net, dataloaders, config, device, rank, world_size, args.test)
+    except Exception as e:
+        print(f"Error in worker {rank}: {e}")
+        raise
     finally:
         if world_size > 1:
             cleanup_ddp()
@@ -265,10 +332,15 @@ def main_worker(rank, world_size, config, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('--config_file', help='configuration (.yaml) file to use')
-    parser.add_argument('--device', default='0,1', type=str, help='gpu ids to use')
-    parser.add_argument('--lin', action='store_true', help='train linear classifier only')
+    parser.add_argument('--device', default='0', type=str, help='gpu ids to use')
+    parser.add_argument('--test', action='store_true', help='run test evaluation only (requires checkpoint)')
 
     args = parser.parse_args()
+    
+    # Validate arguments
+    if args.test and not args.config_file:
+        parser.error("--test requires --config_file")
+    
     config_file = args.config_file
     device_ids = [int(d) for d in args.device.split(',')]
     
@@ -278,7 +350,7 @@ if __name__ == "__main__":
     world_size = len(device_ids)
     
     if world_size > 1:
-        # Multi-GPU distributed training
+        # Multi-GPU distributed training/testing
         torch.multiprocessing.spawn(
             main_worker,
             args=(world_size, config, args),
@@ -286,5 +358,5 @@ if __name__ == "__main__":
             join=True
         )
     else:
-        # Single GPU training
+        # Single GPU training/testing
         main_worker(0, 1, config, args)
