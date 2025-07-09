@@ -11,7 +11,6 @@ from utils.lr_scheduler import build_scheduler
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import os
-import time
 from models import get_model
 from utils.config_files_utils import read_yaml, copy_yaml, get_params_values
 from utils.torch_utils import get_device, get_net_trainable_params, load_from_checkpoint
@@ -57,17 +56,7 @@ def evaluate(net, evalloader, loss_fn, device, loss_input_fn, config, is_distrib
     labels_all = []
     losses_all = []
     
-    # Step tracking setup
-    total_steps = len(evalloader)
-    progress_log_interval = 1#max(1, total_steps // 10)  # Log progress 10 times during evaluation
-    
     net.eval()
-    
-    # Initialize progress bar only on main process
-    pbar = None
-    if not is_distributed or dist.get_rank() == 0:
-        pbar = tqdm(total=total_steps, desc="Evaluating", leave=False)
-    
     with torch.no_grad():
         for step, sample in enumerate(evalloader):
             logits = net(sample['inputs'].to(device))
@@ -78,20 +67,12 @@ def evaluate(net, evalloader, loss_fn, device, loss_input_fn, config, is_distrib
             target, mask = ground_truth
             
             if mask is not None:
-                predicted_all.append(predicted.flatten()[mask.flatten()].cpu().numpy())
-                labels_all.append(target.flatten()[mask.flatten()].cpu().numpy())
+                predicted_all.append(predicted.view(-1)[mask.view(-1)].cpu().numpy())
+                labels_all.append(target.view(-1)[mask.view(-1)].cpu().numpy())
             else:
-                predicted_all.append(predicted.flatten().cpu().numpy())
-                labels_all.append(target.flatten().cpu().numpy())
-            losses_all.append(loss.flatten().cpu().detach().numpy())
-            
-            # Update progress bar
-            if pbar is not None:
-                pbar.update(1)
-    
-    # Close progress bar
-    if pbar is not None:
-        pbar.close()
+                predicted_all.append(predicted.view(-1).cpu().numpy())
+                labels_all.append(target.view(-1).cpu().numpy())
+            losses_all.append(loss.view(-1).cpu().detach().numpy())
 
     # Gather results from all processes if distributed
     if is_distributed:
@@ -126,9 +107,14 @@ def evaluate(net, evalloader, loss_fn, device, loss_input_fn, config, is_distrib
 
     un_labels, class_loss = get_per_class_loss(losses, target_classes, unk_masks=None)
 
-    # Remove detailed print statement - only log essential info
+    # Only print detailed results on main process
     if not is_distributed or dist.get_rank() == 0:
-        print(f"Eval complete - Loss: {losses.mean():.6f}, Micro IOU: {micro_IOU:.4f}, Micro Acc: {micro_acc:.4f}")
+        print("-" * 145)
+        print("Mean (micro) Evaluation metrics (micro/macro), loss: %.7f, iou: %.4f/%.4f, accuracy: %.4f/%.4f, "
+              "precision: %.4f/%.4f, recall: %.4f/%.4f, F1: %.4f/%.4f, unique pred labels: %s" %
+              (losses.mean(), micro_IOU, macro_IOU, micro_acc, macro_acc, micro_precision, macro_precision,
+               micro_recall, macro_recall, micro_F1, macro_F1, np.unique(predicted_classes)))
+        print("-" * 145)
 
     return (un_labels,
             {"macro": {"Loss": losses.mean(), "Accuracy": macro_acc, "Precision": macro_precision,
@@ -173,7 +159,7 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
         if test_only:
             print("Running in TEST-ONLY mode")
         else:
-            print("Training at current learn rate: ", lr)
+            print("Current learn rate: ", lr)
 
     # Move model to device before DDP wrapping
     net.to(device)
@@ -207,21 +193,34 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
         if is_distributed:
             dist.barrier()
         
-        # Save test results to file
-        if is_main_process and save_path:
-            results_file = os.path.join(save_path, "test_results.txt")
-            with open(results_file, 'w') as f:
-                f.write("TEST RESULTS:\n")
-                f.write("="*50 + "\n")
-                f.write("Test Loss: %.7f\n" % test_metrics[1]['macro']['Loss'])
-                f.write("Test Macro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f\n" % 
-                        (test_metrics[1]['macro']['Accuracy'], test_metrics[1]['macro']['Precision'],
-                            test_metrics[1]['macro']['Recall'], test_metrics[1]['macro']['F1'], test_metrics[1]['macro']['IOU']))
-                f.write("Test Micro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f\n" % 
-                        (test_metrics[1]['micro']['Accuracy'], test_metrics[1]['micro']['Precision'],
-                            test_metrics[1]['micro']['Recall'], test_metrics[1]['micro']['F1'], test_metrics[1]['micro']['IOU']))
-            print(f"Test results saved to: {results_file}")
-    
+        if is_main_process:
+            print("="*100)
+            print("TEST RESULTS:")
+            print("="*100)
+            print("Test Loss: %.7f" % test_metrics[1]['macro']['Loss'])
+            print("Test Macro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f" % 
+                  (test_metrics[1]['macro']['Accuracy'], test_metrics[1]['macro']['Precision'],
+                   test_metrics[1]['macro']['Recall'], test_metrics[1]['macro']['F1'], test_metrics[1]['macro']['IOU']))
+            print("Test Micro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f" % 
+                  (test_metrics[1]['micro']['Accuracy'], test_metrics[1]['micro']['Precision'],
+                   test_metrics[1]['micro']['Recall'], test_metrics[1]['micro']['F1'], test_metrics[1]['micro']['IOU']))
+            print("="*100)
+            
+            # Save test results to file
+            if save_path:
+                results_file = os.path.join(save_path, "test_results.txt")
+                with open(results_file, 'w') as f:
+                    f.write("TEST RESULTS:\n")
+                    f.write("="*50 + "\n")
+                    f.write("Test Loss: %.7f\n" % test_metrics[1]['macro']['Loss'])
+                    f.write("Test Macro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f\n" % 
+                            (test_metrics[1]['macro']['Accuracy'], test_metrics[1]['macro']['Precision'],
+                             test_metrics[1]['macro']['Recall'], test_metrics[1]['macro']['F1'], test_metrics[1]['macro']['IOU']))
+                    f.write("Test Micro - Accuracy: %.4f, Precision: %.4f, Recall: %.4f, F1: %.4f, IOU: %.4f\n" % 
+                            (test_metrics[1]['micro']['Accuracy'], test_metrics[1]['micro']['Precision'],
+                             test_metrics[1]['micro']['Recall'], test_metrics[1]['micro']['F1'], test_metrics[1]['micro']['IOU']))
+                print(f"Test results saved to: {results_file}")
+        
         return test_metrics
 
     num_steps_train = len(dataloaders['train'])
@@ -234,10 +233,6 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
         writer = SummaryWriter(save_path)
 
     BEST_IOU = 0
-    
-    # Time tracking
-    # training_start_time = time.time()
-    # progress_log_interval = 1#max(1, num_steps_train // 10)  # Log progress 10 times per epoch
 
     net.train()
     for epoch in range(start_epoch, start_epoch + num_epochs):
@@ -247,8 +242,7 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
             dataloaders['train'].sampler.set_epoch(epoch)
         
         if is_main_process:
-            print(f"\nStarting Epoch {epoch}/{num_epochs}")
-            # epoch_start_time = time.time()
+            print(f"\nEpoch {epoch}/{num_epochs}")
             pbar = tqdm(total=num_steps_train, desc=f"Training Epoch {epoch}")
         
         for step, sample in enumerate(dataloaders['train']):
@@ -258,15 +252,6 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
             # Logging only on main process
             if is_main_process and writer:
                 writer.add_scalar('training_gradient_norm', grad_norm, abs_step)
-                writer.add_scalar('training_loss', loss.item(), abs_step)
-                
-                # # Calculate and log training IoU and accuracy for current batch
-                # logits_perm = logits.permute(0, 3, 1, 2)
-                # batch_metrics = get_mean_metrics(
-                #     logits=logits_perm, labels=labels, unk_masks=unk_masks, n_classes=num_classes, 
-                #     loss=loss, epoch=epoch, step=step)
-                # writer.add_scalar('training_iou', batch_metrics['IOU'], abs_step)
-                # writer.add_scalar('training_accuracy', batch_metrics['Accuracy'], abs_step)
             
             if len(ground_truth) == 2:
                 labels, unk_masks = ground_truth
@@ -274,35 +259,24 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
                 labels = ground_truth
                 unk_masks = None
 
-            # Progress logging - less frequent than before
-            # if step % progress_log_interval == 0 and is_main_process:
-            #     elapsed = time.time() - epoch_start_time
-            #     progress = (step + 1) / num_steps_train * 100
-            #     eta = elapsed / (step + 1) * (num_steps_train - step - 1)
-            #     print(f"  Progress: {progress:5.1f}% | Step {step+1}/{num_steps_train} | "
-            #           f"Loss: {loss:.6f} | Elapsed: {elapsed/60:.1f}m | ETA: {eta/60:.1f}m")
-
-            # Batch metrics logging - only to tensorboard, no print
+            # Print batch statistics on main process
             if abs_step % train_metrics_steps == 0 and is_main_process:
-                logits_perm = logits.permute(0, 3, 1, 2)
+                logits = logits.permute(0, 3, 1, 2)
                 batch_metrics = get_mean_metrics(
-                    logits=logits_perm, labels=labels, unk_masks=unk_masks, n_classes=num_classes, 
+                    logits=logits, labels=labels, unk_masks=unk_masks, n_classes=num_classes, 
                     loss=loss, epoch=epoch, step=step)
-                if is_main_process and writer:
+                if writer:
                     write_mean_summaries(writer, batch_metrics, abs_step, mode="train", optimizer=optimizer)
-                    print(f"    Batch metrics logged at step {abs_step}")
+                print("abs_step: %d, epoch: %d, step: %5d, loss: %.7f, batch_iou: %.4f, batch accuracy: %.4f" %
+                      (abs_step, epoch, step + 1, loss, batch_metrics['IOU'], batch_metrics['Accuracy']))
 
             # Save checkpoints only on main process
             if abs_step % save_steps == 0 and is_main_process:
                 model_to_save = net.module if is_distributed else net
                 torch.save(model_to_save.state_dict(), "%s/%depoch_%dstep.pth" % (save_path, epoch, abs_step))
-                print(f"  Checkpoint saved at step {abs_step}")
 
             # Evaluate model
             if abs_step % eval_steps == 0:
-                if is_main_process:
-                    print(f"  Running evaluation at step {abs_step}...")
-                
                 eval_metrics = evaluate(net, dataloaders['eval'], loss_fn, device, loss_input_fn, config, is_distributed)
                 
                 # Synchronize before handling results
@@ -321,9 +295,12 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
                         write_mean_summaries(writer, eval_metrics[1]['micro'], abs_step, mode="eval_micro", optimizer=None)
                         write_mean_summaries(writer, eval_metrics[1]['macro'], abs_step, mode="eval_macro", optimizer=None)
                         write_class_summaries(writer, [eval_metrics[0], eval_metrics[1]['class']], abs_step, mode="eval", optimizer=None)
+                    
+                    print("Evaluation - Loss: %.7f, Macro IOU: %.4f, Micro IOU: %.4f" % 
+                          (eval_metrics[1]['macro']['Loss'], eval_metrics[1]['macro']['IOU'], eval_metrics[1]['micro']['IOU']))
 
                 net.train()
-               
+            
             if is_main_process:
                 pbar.update(1)
 
@@ -331,17 +308,6 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
         
         if is_main_process:
             pbar.close()
-        
-        # # Epoch summary
-        # epoch_time = time.time() - epoch_start_time
-        # total_elapsed = time.time() - training_start_time
-        # if is_main_process:
-        #     print(f"Epoch {epoch} complete - Time: {epoch_time/60:.1f}m | Total elapsed: {total_elapsed/60:.1f}m")
-
-    # Training complete summary
-    # if is_main_process and not test_only:
-    #     total_time = time.time() - training_start_time
-    #     print(f"\nTraining complete! Total time: {total_time/3600:.2f}h | Best IOU: {BEST_IOU:.4f}")
 
 
 def main_worker(rank, world_size, config, args):
@@ -349,7 +315,7 @@ def main_worker(rank, world_size, config, args):
     if world_size > 1:
         setup_ddp(rank, world_size)
     
-    device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
+    device = get_device(device_ids, allow_cpu=True)
     
     try:
         dataloaders = get_distributed_dataloaders(config, world_size, rank)

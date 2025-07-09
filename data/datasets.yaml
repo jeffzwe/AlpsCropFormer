@@ -66,15 +66,26 @@ PASTIS_LOW_fold5:
 
 # Sentinel -------------------------------------------------------------------------------------------------
 
+# Used for the original Sentinel dataset structure
+
+# Sentinel_fold1:
+#     basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/Sentinel_mini
+#     crop_train: "Sentinel_Crop_2022"
+#     crop_eval: "Sentinel_Crop_2023"
+#     crop_test: "Sentinel_Crop_2021"
+#     gt_train: "Sentinel_GT_2022"
+#     gt_eval: "Sentinel_GT_2023"
+#     gt_test: "Sentinel_GT_2021"
+#     temp_train: "Sentinel_Temp_2022"
+#     temp_eval: "Sentinel_Temp_2023"
+#     temp_test: "Sentinel_Temp_2021"
+#     crop_map: "crop_mappings.csv"
+
+
+# # Used for Webdataset structure with preprocessed data
 Sentinel_fold1:
-    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/Sentinel_mini
-    crop_train: "Sentinel_Crop_2022"
-    crop_eval: "Sentinel_Crop_2023"
-    crop_test: "Sentinel_Crop_2021"
-    gt_train: "Sentinel_GT_2022"
-    gt_eval: "Sentinel_GT_2023"
-    gt_test: "Sentinel_GT_2021"
-    temp_train: "Sentinel_Temp_2022"
-    temp_eval: "Sentinel_Temp_2023"
-    temp_test: "Sentinel_Temp_2021"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/Sentinel_mini/preprocessed
+    paths_train: "CropFormer2022"
+    paths_eval: "CropFormer2023"
+    paths_test: "CropFormer2021"
     crop_map: "crop_mappings.csv"

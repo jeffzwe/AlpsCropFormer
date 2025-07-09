@@ -16,7 +16,7 @@ MODEL:
   dim_head: 32
   emb_dropout: 0.
   scale_dim: 4
-  truncate_portion: 1.0
+  truncate_month: 12  # Include data up until this month of the year (1-12). 12 means all months are included.
   timestamp_mode: 'temp_subsample'   # 'base', 'sliding_window', 'temp_sw', 'temp_no_sw', 'temp_subsample'
 
 
@@ -24,21 +24,21 @@ DATASETS:
   train:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 8
+    batch_size: 32
     extra_data:
     num_workers: 4
 
   eval:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 1    # batch size 1 for evaluation. All img_res x img_res patches per sample image
+    batch_size: 32   # batch size 1 for evaluation. All img_res x img_res patches per sample image
     extra_data:
     num_workers: 4
 
   test:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 1   # batch size 1 for test. All img_res x img_res patches per sample image
+    batch_size: 32   # batch size 1 for test. All img_res x img_res patches per sample image
     extra_data:
     num_workers: 4
 
@@ -59,6 +59,6 @@ CHECKPOINT:
   load_from_checkpoint:
   partial_restore: False
   save_path: 'models/model_logs/Sentinel/TSViT_fold1.test'
-  train_metrics_steps: 250
-  eval_steps: 2000
+  train_metrics_steps: 200
+  eval_steps: 20
   save_steps: 20000000000

@@ -9,63 +9,50 @@ import random
 import zarr
 import numpy as np
 from data.Sentinel.data_transforms import Sentinel_transform
+from itertools import chain
 import warnings
 warnings.filterwarnings("ignore")
 
 def my_collate(batch):
     """
-    Collate function that handles the consistent list format from the dataset.
-    Each sample in the batch is a tuple of (images_list, unk_masks_list, ground_truth_list)
-    where each list contains one or more arrays.
-    
-    Args:
-        batch: A list of samples returned by __getitem__
-        
-    Returns:
-        A dictionary with batched inputs, labels, and unk_masks
+    Efficient collate function for fixed-length image/mask/label lists per sample.
+    Each sample is a tuple: (images_list, unk_masks_list, ground_truth_list),
+    where each list contains the same number of arrays across all samples.
     """
-    
-    # Initialize lists to store all elements
-    all_inputs = []
-    all_unk_masks = []
-    all_labels = []
-    
-    # Process each sample in the batch
-    for sample in batch:
-        images_list, unk_masks_list, ground_truth_list = sample
-        
-        # Process each element in the lists
-        for i in range(len(images_list)):
-            # Convert numpy arrays to float32 tensors
-            all_inputs.append(torch.from_numpy(images_list[i].copy()).float())
-            all_unk_masks.append(torch.from_numpy(unk_masks_list[i].copy()).unsqueeze(-1))
-            all_labels.append(torch.from_numpy(ground_truth_list[i].copy()).float().unsqueeze(-1))
-    
-    # Stack all elements into tensors
+    # Flatten all lists across the batch
+    images = list(chain.from_iterable(sample[0] for sample in batch))
+    unk_masks = list(chain.from_iterable(sample[1] for sample in batch))
+    labels = list(chain.from_iterable(sample[2] for sample in batch))
+
+    # Stack all at once
+    inputs = torch.from_numpy(np.stack(images)).float()
+    unk_masks = torch.from_numpy(np.stack(unk_masks))[..., None]
+    labels = torch.from_numpy(np.stack(labels))[..., None]
+
     return {
-        'inputs': torch.stack(all_inputs),
-        'labels': torch.stack(all_labels),
-        'unk_masks': torch.stack(all_unk_masks)
+        'inputs': inputs,
+        'labels': labels,
+        'unk_masks': unk_masks
     }
 
-def get_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_portion, timestamp_mode, img_res,
+def get_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_month, timestamp_mode, img_res,
                             is_training, batch_size=32, num_workers=4, shuffle=True):
     
     dataset = Sentinel2Dataset(crop_path, gt_path, temp_path, label_sheet_file=crop_map, temporal_length=temp_length, img_res=img_res,
-                               truncate_portion=truncate_portion, timestamp_mode=timestamp_mode, is_training=is_training)
+                               truncate_month=truncate_month, timestamp_mode=timestamp_mode, is_training=is_training)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0,
                                              collate_fn=my_collate)
     return dataloader
 
 
-def get_distr_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_portion, timestamp_mode, img_res,
+def get_distr_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncate_month, timestamp_mode, img_res,
                             is_training, world_size, rank, batch_size=32, num_workers=4, shuffle=False):
     """
     return a distributed dataloader
     """
     
     dataset = Sentinel2Dataset(crop_path, gt_path, temp_path, label_sheet_file=crop_map, temporal_length=temp_length, img_res=img_res,
-                               truncate_portion=truncate_portion, timestamp_mode=timestamp_mode, is_training=is_training)
+                               truncate_month=truncate_month, timestamp_mode=timestamp_mode, is_training=is_training)
     sampler = torch.utils.data.distributed.DistributedSampler(dataset, num_replicas=world_size, rank=rank)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers,
                                              pin_memory=True, sampler=sampler, collate_fn=my_collate)
@@ -88,7 +75,7 @@ class Sentinel2Dataset(Dataset):
         sample_percentage=1.0,
         seed=42,
         timestamp_mode='base',
-        truncate_portion=1.0,  # Portion of time dimension to keep (1.0 = no truncation)
+        truncate_month=12,  # Month time dimension to keep 
         img_res = 24,
         is_training=True
     ):
@@ -97,11 +84,11 @@ class Sentinel2Dataset(Dataset):
         self.gt_dir = gt_dir
         self.temp_calendar_dir = temp_calendar_dir
         self.bands = bands
-        self.truncate_portion = truncate_portion
-        self.temporal_length = int(temporal_length * self.truncate_portion)
+        self.truncate_month = truncate_month
+        self.temporal_length = int(temporal_length * (self.truncate_month / 12.0))  # Adjust temporal length based on truncate_month
         self.condition = condition
         self.timestamp_mode = timestamp_mode
-        self.truncate_portion = truncate_portion
+        self.truncate_month = truncate_month
         self.img_res = img_res
         self.is_training = is_training
 
@@ -138,7 +125,7 @@ class Sentinel2Dataset(Dataset):
             channel_means=self.channel_means,
             channel_stds=self.channel_stds,
             temporal_length=self.temporal_length,
-            truncate_portion=self.truncate_portion,
+            truncate_month=self.truncate_month,
             condition=self.condition,
             timestamp_mode=self.timestamp_mode,
             img_res=self.img_res,
@@ -155,7 +142,7 @@ class Sentinel2Dataset(Dataset):
             # print(f"Channel Means: {[f'{mean:.2f}' for mean in self.channel_means]}")
             # print(f"Channel Stds: {[f'{std:.2f}' for std in self.channel_stds]}")
             print(f"timestamp_mode: {self.timestamp_mode}")
-            print(f"truncate_portion: {self.truncate_portion}")
+            print(f"truncate_month: {self.truncate_month}")
 
     def _get_data_files(self):
         data_files = []
@@ -214,17 +201,7 @@ class Sentinel2Dataset(Dataset):
             images = np.stack(bands_data, axis=0)  # C x T x H x W
             time_stamps = s2_data['/time'][:]
             cloud_mask = s2_data['s2_mask'][:].astype(np.int16)
-            
-            # Print unique values in cloud_mask
-            # print(f"Sample {idx} cloud_mask unique values: {np.unique(cloud_mask)}")
-            
-            # Check if time dimension is sufficient after truncation
-            time_dim_length = images.shape[1]
-            truncated_length = int(time_dim_length * self.truncate_portion)
-            if truncated_length < self.temporal_length:
-                # Option 1: Raise an exception
-                raise ValueError(f"Time dimension too short after truncation: got {truncated_length}, need {self.temporal_length}. "
-                                f"Sample {idx}, file {data_file}. Consider using a smaller temporal_length or larger truncate_portion.")
+ 
         
         # Load GT
         lnf = gt_data['lnf_code'][:]

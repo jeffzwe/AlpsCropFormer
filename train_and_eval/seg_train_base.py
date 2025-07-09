@@ -19,9 +19,10 @@ from metrics.loss_functions import get_loss
 from utils.summaries import write_mean_summaries, write_class_summaries
 from data import get_loss_data_input
 from tqdm import tqdm
+from data.Sentinel.dataloader_webdataset import get_class_weights
 
 
-def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
+def train_and_evaluate(net, dataloaders, config, device):
 
     def train_step(net, sample, loss_fn, optimizer, device, loss_input_fn):
         optimizer.zero_grad()
@@ -30,9 +31,9 @@ def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
         ground_truth = loss_input_fn(sample, device)
         loss = loss_fn['mean'](outputs, ground_truth)
         loss.backward()
-        total_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=float('inf'))
+        # total_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=float('inf'))
         optimizer.step()
-        return outputs, ground_truth, loss, total_norm
+        return outputs, ground_truth, loss#, total_norm
   
     def evaluate(net, evalloader, loss_fn, config):
         num_classes = config['MODEL']['num_classes']
@@ -41,7 +42,7 @@ def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
         losses_all = []
         net.eval()
         with torch.no_grad():
-            for step, sample in enumerate(evalloader):
+            for step, sample in enumerate(tqdm(evalloader, desc="Evaluating")):
                 logits = net(sample['inputs'].to(device))
                 logits = logits.permute(0, 2, 3, 1)
                 _, predicted = torch.max(logits.data, -1)
@@ -49,15 +50,12 @@ def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
                 loss = loss_fn['all'](logits, ground_truth)
                 target, mask = ground_truth
                 if mask is not None:
-                    predicted_all.append(predicted.view(-1)[mask.view(-1)].cpu().numpy())
-                    labels_all.append(target.view(-1)[mask.view(-1)].cpu().numpy())
+                    predicted_all.append(predicted.flatten()[mask.flatten()].cpu().numpy())
+                    labels_all.append(target.flatten()[mask.flatten()].cpu().numpy())
                 else:
-                    predicted_all.append(predicted.view(-1).cpu().numpy())
-                    labels_all.append(target.view(-1).cpu().numpy())
-                losses_all.append(loss.view(-1).cpu().detach().numpy())
-                
-                # if step > 5:
-                #    break
+                    predicted_all.append(predicted.flatten().cpu().numpy())
+                    labels_all.append(target.flatten().cpu().numpy())
+                losses_all.append(loss.flatten().cpu().detach().numpy())
 
         print("finished iterating over dataset after step %d" % step)
         print("calculating metrics...")
@@ -102,7 +100,7 @@ def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
     save_steps = config['CHECKPOINT']["save_steps"]
     save_path = config['CHECKPOINT']["save_path"]
     checkpoint = config['CHECKPOINT']["load_from_checkpoint"]
-    num_steps_train = len(dataloaders['train'])
+    num_steps_train = 100 #len(dataloaders['train'])
     local_device_ids = config['local_device_ids']
     weight_decay = get_params_values(config['SOLVER'], "weight_decay", 0)
 
@@ -123,11 +121,14 @@ def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
         os.makedirs(save_path)
 
     copy_yaml(config)
+    
+    # Only needed for loss_function = 'cross_entropy'
+    class_weigts = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', beta=0.99999)
 
     loss_input_fn = get_loss_data_input(config)
     
-    loss_fn = {'all': get_loss(config, device, reduction=None),
-               'mean': get_loss(config, device, reduction="mean")}
+    loss_fn = {'all': get_loss(config, device, reduction=None, class_weights=class_weigts),
+               'mean': get_loss(config, device, reduction="mean", class_weights=class_weigts)}
 
     trainable_params = get_net_trainable_params(net)
     optimizer = optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
@@ -147,10 +148,10 @@ def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
             
             for step, sample in enumerate(dataloaders['train']):
                 abs_step = start_global + (epoch - start_epoch) * num_steps_train + step
-                logits, ground_truth, loss, grad_norm = train_step(net, sample, loss_fn, optimizer, device, loss_input_fn=loss_input_fn)
+                logits, ground_truth, loss= train_step(net, sample, loss_fn, optimizer, device, loss_input_fn=loss_input_fn)
                 
                 # Log individual gradient norm to TensorBoard
-                writer.add_scalar('training_gradient_norm', grad_norm, abs_step)
+                # writer.add_scalar('training_gradient_norm', grad_norm, abs_step)
                 
                 if len(ground_truth) == 2:
                     labels, unk_masks = ground_truth
@@ -220,15 +221,55 @@ if __name__ == "__main__":
     
     #######   Testing Dataloader   #############
     
-    # train_iter = iter(dataloaders['train'])
     # try:
+    #     train_iter = iter(dataloaders['train'])
     #     sample = next(train_iter)
     #     print("Sample Input Dim: ", sample['inputs'].shape)
     #     print("Mask Dim: ", sample['unk_masks'].shape)
     #     print("Label Dim: ", sample['labels'].shape)
+        
+        # for sample in dataloaders['eval']:
+        # #     print("Sample Input Dim: ", sample['inputs'].shape)
+        # #     print("Mask Dim: ", sample['unk_masks'].shape)
+        # #     print("Label Dim: ", sample['labels'].shape)
+        #     pass
+        
+        # Timing infrastructure for dataloader
+    #     import time
+    #     print("Starting precise dataloader timing test...")
+        
+    #     dataloader_iter = iter(dataloaders['train'])
+    #     batch_times = []
+        
+    #     for batch_idx in range(100):  # Test 50 batches
+    #         try:
+    #             # Time the actual data loading
+    #             load_start = time.time()
+    #             sample = next(dataloader_iter)  # This is where WebDataset transforms run
+    #             load_time = time.time() - load_start
+                
+    #             # Quick access to verify data
+    #             inputs = sample['inputs']
+    #             batch_size = inputs.shape[0]
+                
+    #             batch_times.append(load_time)
+                
+    #             if batch_idx % 10 == 0:
+    #                 print(f"Batch {batch_idx}: {load_time:.4f}s, "
+    #                       f"Batch size: {batch_size}, Shape: {inputs.shape}")
+                    
+    #         except StopIteration:
+    #             print(f"Dataloader exhausted after {batch_idx} batches")
+    #             break
+    #     batch_times = batch_times[15:] 
+        
+    #     if batch_times:
+    #         avg_time = np.mean(batch_times)
+    #         print(f"\nAverage batch loading time: {avg_time:.4f}s")
+    #         print(f"Min: {np.min(batch_times):.4f}s, Max: {np.max(batch_times):.4f}s")
     # finally:
     #     # Clean up resources
-    #     del train_iter
+    #     del dataloader_iter
     #     # Force garbage collection
     #     import gc
     #     gc.collect()

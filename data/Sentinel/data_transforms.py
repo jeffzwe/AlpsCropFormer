@@ -11,11 +11,12 @@ def Sentinel_transform(
     channel_means, 
     channel_stds, 
     temporal_length, 
-    truncate_portion=1.0, 
+    truncate_month=12, 
     condition='open_sky',
     timestamp_mode='base',
     img_res=24,  # Default image resolution
-    is_training=True
+    is_training=True,
+    select_k_patches=8  # Number of patches to select during training
 ):
     """
     Create a transform pipeline for Sentinel-2 data
@@ -24,26 +25,29 @@ def Sentinel_transform(
     
     # Add transformations based on parameters
     transform_list.append(RemoveDuplicateTimestamps())
-    transform_list.append(TruncateTimeDimension(truncate_portion))
+    transform_list.append(TruncateTimeDimension(truncate_month))
     
     # Different subsampling methods
-    if timestamp_mode == 'temp_subsample':
-        transform_list.append(AdaptiveTemperatureSubsampling(temporal_length, condition))
-    elif timestamp_mode == 'temp_sw':
-        transform_list.append(SlidingWindowSubsample(temporal_length, condition, use_temperature_calendar=True))
+    if timestamp_mode == 'base':
+        transform_list.append(NoSlidingSubsample(temporal_length))
+    elif timestamp_mode == 'sliding_window':
+         transform_list.append(SlidingWindowSubsample(temporal_length, condition, use_temperature_calendar=False))
     elif timestamp_mode == 'temp_no_sw':
         transform_list.append(TemperatureCalendarNoSlidingSubsample(temporal_length))
-    elif timestamp_mode == 'base':
-        transform_list.append(NoSlidingSubsample(temporal_length))
+    elif timestamp_mode == 'temp_sw':
+        transform_list.append(SlidingWindowSubsample(temporal_length, condition, use_temperature_calendar=True))
+    elif timestamp_mode == 'temp_subsample':
+        transform_list.append(AdaptiveTemperatureSubsampling(temporal_length, condition))
     else:
-        transform_list.append(SlidingWindowSubsample(temporal_length, condition, use_temperature_calendar=False))
+        raise ValueError(f"Unknown timestamp mode: {timestamp_mode}")
+       
     
     # Final transformations
     transform_list.append(Normalize(channel_means, channel_stds))
     transform_list.append(TileDates(timestamp_mode))  # Add time_stamps as an additional channel
     transform_list.append(RandomRotate())
     transform_list.append(UnkMask())    # Generate unknown masks with numpy arrays
-    transform_list.append(RandomCrop(img_res, is_training))  # Updated parameter name
+    transform_list.append(RandomCrop(img_res, is_training, select_k_patches))  # Updated parameter name
     
     # No ToTensor class - we'll handle tensor conversion in the collate function
     
@@ -85,16 +89,14 @@ class UnkMask(object):
     def __call__(self, sample):
         images, cloud_mask, ground_truth = sample
         
-        # Create unknown mask based on cloud_mask (valid = not cloudy)
-        # Assuming cloud_mask == 1 means cloudy and cloud_mask == 0 means clear
-        # unk_masks = (cloud_mask == 0).astype(np.bool_)
+        # Create unknown mask based on ground_truth (valid = valid class)
+        # TODO I'm assuming class 31 is unknown, adjust if needed
+        unk_masks = (ground_truth == 31).astype(np.bool_)
         
-        # Create unknown mask as all ones with shape H×W×1
-        # Extract height and width from cloud_mask
-        H, W = cloud_mask.shape[1], cloud_mask.shape[2]
-        
-        # Create a numpy array of ones with shape H×W×1 (using numpy instead of torch)
-        unk_masks = np.ones((H, W), dtype=np.bool_)
+        # Create unknown mask as all ones with shape H×W
+        # Extract height and width from ground_truth
+        # H, W = ground_truth.shape[0], ground_truth.shape[1]
+        # unk_masks = np.ones((H, W), dtype=np.bool_)
         
         return images, unk_masks, ground_truth
 
@@ -102,9 +104,10 @@ class RandomCrop(object):
     """
     Crop patches of size img_res × img_res from the input image.
     """
-    def __init__(self, img_res=24, is_training=True):
+    def __init__(self, img_res=24, is_training=True, select_k_patches=1):
         self.img_res = img_res
         self.is_training = is_training
+        self.select_k_patches = select_k_patches  # Number of patches to select during training
         
     def __call__(self, sample):
         images, unk_masks, ground_truth = sample
@@ -130,10 +133,18 @@ class RandomCrop(object):
         num_patches = H // self.img_res
         
         if self.is_training:
-            # Training: randomly select one patch regardless of labels
-            h_idx = random.randint(0, num_patches - 1)
-            w_idx = random.randint(0, num_patches - 1)
-            selected_patches = [(h_idx * self.img_res, w_idx * self.img_res)]
+            # Training: randomly select k patches
+            total_patches = num_patches * num_patches
+            k_patches = min(self.select_k_patches, total_patches)  # Don't select more patches than available
+            
+            # Generate all possible patch positions
+            all_patches = []
+            for h in range(num_patches):
+                for w in range(num_patches):
+                    all_patches.append((h * self.img_res, w * self.img_res))
+            
+            # Randomly select k patches without replacement
+            selected_patches = random.sample(all_patches, k_patches)
         else:
             # Evaluation: return all patches
             selected_patches = []
@@ -241,21 +252,32 @@ class RemoveDuplicateTimestamps(object):
 
 class TruncateTimeDimension(object):
     """
-    Truncate the time dimension based on the truncate_portion parameter
+    Truncate the time dimension based on the truncate_month parameter
     """
-    def __init__(self, truncate_portion=1.0):
-        self.truncate_portion = truncate_portion
+    def __init__(self, truncate_month=12):
+        self.truncate_month = truncate_month
         
     def __call__(self, sample):
         images, time_stamps, cloud_mask, temp_cal, ground_truth = sample
         
-        if self.truncate_portion < 1.0:
-            total = images.shape[1]
-            new_t = max(1, int(total * self.truncate_portion))
-            images = images[:, :new_t, ...]
-            time_stamps = time_stamps[:new_t]
-            cloud_mask = cloud_mask[:new_t]
+        if self.truncate_month < 12:
+            # Convert day of year to month (approximate)
+            days_per_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+            cumulative_days = np.cumsum([0] + days_per_month)
             
+            # Find indices where timestamps fall within the specified month range
+            valid_indices = []
+            for i, day in enumerate(time_stamps):
+                month = np.searchsorted(cumulative_days, day, side='right')
+                if month <= self.truncate_month:
+                    valid_indices.append(i)
+            
+            if valid_indices:
+                valid_indices = np.array(valid_indices)
+                images = images[:, valid_indices, ...]
+                time_stamps = time_stamps[valid_indices]
+                cloud_mask = cloud_mask[valid_indices]
+                
         return images, time_stamps, cloud_mask, temp_cal, ground_truth
 
 class SlidingWindowSubsample(object):
@@ -336,11 +358,18 @@ class AdaptiveTemperatureSubsampling(object):
             sel.pop(worst)
         if len(sel) < self.temporal_length:
             miss = self.temporal_length - len(sel)
-            extra = np.linspace(0, len(time_stamps) - 1, miss).astype(int)
-            sel.extend([i for i in extra if i not in sel])
+            # OG
+            # extra = np.linspace(0, len(time_stamps) - 1, miss).astype(int)
+            # sel.extend([i for i in extra if i not in sel])
+            extra = np.random.choice([i for i in range(len(time_stamps)) if i not in sel], miss, replace=False)
+            sel.extend(extra)
         sel = sorted(sel)
         
-        return images[:, sel, ...], temp_cal[sel], cloud_mask[sel], ground_truth
+        images = images[:, sel, ...]
+        temp_cal = temp_cal[sel]
+        cloud_mask = cloud_mask[sel]
+        
+        return images, temp_cal, cloud_mask, ground_truth
 
 class NoSlidingSubsample(object):
     """
@@ -387,7 +416,5 @@ class TemperatureCalendarNoSlidingSubsample(object):
         total = images.shape[1]
         indices = np.linspace(0, total - 1, self.temporal_length, dtype=int)
         new_time_stamps = temp_cal[indices]
-        
-        return images[:, indices, ...], new_time_stamps, cloud_mask[indices], ground_truth
         
         return images[:, indices, ...], new_time_stamps, cloud_mask[indices], ground_truth
