@@ -172,39 +172,41 @@ class MaskedCrossEntropyLoss(torch.nn.Module):
             raise ValueError("ground_truth parameter for MaskedCrossEntropyLoss is either (target, mask) or (target)")
         
         # OG version
-        # if mask is not None:
-        #     mask_flat = mask.reshape(-1, 1)  # (N*H*W x 1)
-        #     nclasses = logits.shape[-1]
-        #     logits_flat = logits.reshape(-1, logits.size(-1))  # (N*H*W x Nclasses)
-        #     masked_logits_flat = logits_flat[mask_flat.repeat(1, nclasses)].view(-1, nclasses)
-        #     target_flat = target.reshape(-1, 1)  # (N*H*W x 1)
-        #     masked_target_flat = target_flat[mask_flat].unsqueeze(dim=-1).to(torch.int64)
-        # else:
-        #     masked_logits_flat = logits.reshape(-1, logits.size(-1))  # (N*H*W x Nclasses)
-        #     masked_target_flat = target.reshape(-1, 1).to(torch.int64)  # (N*H*W x 1)
-        # masked_log_probs_flat = torch.nn.functional.log_softmax(masked_logits_flat, dim=1)  # (N*H*W x Nclasses)
-        # masked_losses_flat = -torch.gather(masked_log_probs_flat, dim=1, index=masked_target_flat)  # (N*H*W x 1)
-        # if self.mean:
-        #     return masked_losses_flat.mean()
-        # return masked_losses_flat
+        if mask is not None:
+            mask_flat = mask.reshape(-1, 1)  # (N*H*W x 1)
+            nclasses = logits.shape[-1]
+            logits_flat = logits.reshape(-1, logits.size(-1))  # (N*H*W x Nclasses)
+            masked_logits_flat = logits_flat[mask_flat.repeat(1, nclasses)].view(-1, nclasses)
+            target_flat = target.reshape(-1, 1)  # (N*H*W x 1)
+            masked_target_flat = target_flat[mask_flat].unsqueeze(dim=-1).to(torch.int64)
+        else:
+            masked_logits_flat = logits.reshape(-1, logits.size(-1))  # (N*H*W x Nclasses)
+            masked_target_flat = target.reshape(-1, 1).to(torch.int64)  # (N*H*W x 1)
+        masked_log_probs_flat = torch.nn.functional.log_softmax(masked_logits_flat, dim=1)  # (N*H*W x Nclasses)
+        masked_losses_flat = -torch.gather(masked_log_probs_flat, dim=1, index=masked_target_flat)  # (N*H*W x 1)
+        if self.mean:
+            return masked_losses_flat.mean()
+        return masked_losses_flat
         
         # Use PyTorch's optimized cross_entropy with ignore_index for masking
         if mask is not None:
-            # Set masked positions to ignore_index
             target_masked = target.clone()
-            target_masked[~mask] = -100  # PyTorch's default ignore_index
+            target_masked[~mask] = -100  # PyTorch's ignore_index
             loss = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)), 
                 target_masked.reshape(-1), 
-                reduction='none' if not self.mean else 'mean'
+                reduction='none'
             )
+            loss = loss[target_masked.reshape(-1) != -100].unsqueeze(1)  # Match (M, 1) shape
         else:
             loss = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)), 
                 target.reshape(-1), 
-                reduction='none' if not self.mean else 'mean'
+                reduction='none'
             )
-        
+            loss = loss.unsqueeze(1)  # Match original (N*H*W, 1)
+        if self.mean:
+            return loss.mean()
         return loss
 
 
