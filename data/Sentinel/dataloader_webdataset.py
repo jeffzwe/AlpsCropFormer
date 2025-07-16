@@ -89,7 +89,7 @@ class WebDatasetTransform:
         ground_truth= npy_loads(sample["ground_truth.npy"])
         temp_cal    = npy_loads(sample["temp_cal.npy"])
         
-        # apply your existing transforms()
+        # apply transforms()
         final_images, final_unk_masks, final_ground_truth = transforms(
             (images, time_stamps, cloud_mask, temp_cal, ground_truth),
             self.temp_length,
@@ -136,7 +136,7 @@ def get_dataloader(webdataset_dir, temp_length, truncate_month, timestamp_mode,
         #     dataloader = dataloader.unbatched().shuffle(10).batched(batch_size)
         
         # Set epoch size (adjust based on your dataset size)
-        dataloader = dataloader.with_epoch(3200 // batch_size)
+        dataloader = dataloader.with_epoch(3200 // batch_size).with_length(3200 // batch_size)
     else:
         dataset = (
             wds.WebDataset(shards, shardshuffle=False, resampled=False, workersplitter= wds.split_by_worker)

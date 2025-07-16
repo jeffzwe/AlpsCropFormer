@@ -62,7 +62,7 @@ SOLVER:
 CHECKPOINT:
   load_from_checkpoint:
   partial_restore: False
-  save_path: 'models/model_logs/PASTIS_LOW/TSViT-S_fold1.img16'
+  save_path: 'models/model_logs/PASTIS_LOW/TSViT-S_fold1.img16.debug'
   train_metrics_steps: 184
-  eval_steps: 184
+  eval_steps: 5
   save_steps: 20000000000

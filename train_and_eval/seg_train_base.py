@@ -100,7 +100,7 @@ def train_and_evaluate(net, dataloaders, config, device):
     save_steps = config['CHECKPOINT']["save_steps"]
     save_path = config['CHECKPOINT']["save_path"]
     checkpoint = config['CHECKPOINT']["load_from_checkpoint"]
-    num_steps_train = 100 #len(dataloaders['train'])
+    num_steps_train = len(dataloaders['train'])
     local_device_ids = config['local_device_ids']
     weight_decay = get_params_values(config['SOLVER'], "weight_decay", 0)
 

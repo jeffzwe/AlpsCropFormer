@@ -2,8 +2,8 @@ import os
 from data.PASTIS24.dataloader import get_dataloader as get_pastis_dataloader
 from data.PASTIS24.dataloader import get_distr_dataloader as get_pastis_distr_dataloader
 from data.PASTIS24.data_transforms import PASTIS_segmentation_transform
-from data.Sentinel.dataloader_webdataset import get_dataloader as get_sentinel_dataloader
-from data.Sentinel.dataloader_webdataset import get_distr_dataloader as get_sentinel_distr_dataloader
+from data.Sentinel.dataloader import get_dataloader as get_sentinel_dataloader
+from data.Sentinel.dataloader import get_distr_dataloader as get_sentinel_distr_dataloader
 from utils.config_files_utils import read_yaml
 
 
@@ -25,17 +25,17 @@ def get_dataloaders(config):
             transform=PASTIS_segmentation_transform(model_config, is_training=True),
             batch_size=train_config['batch_size'], shuffle=True, num_workers=train_config['num_workers'])
     elif 'Sentinel' in train_config['dataset']:
-        train_config['webdataset_dir'] = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['paths_train'])
+        train_config['crop_paths'] = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_train'])
+        train_config['gt_paths'] = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['gt_train'])
+        train_config['temp_paths'] = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['temp_train'])
+        train_config['crop_map'] = DATASET_INFO[train_config['dataset']]['crop_map']
         
         dataloaders['train'] = get_sentinel_dataloader(
-            webdataset_dir=train_config['webdataset_dir'],
-            temp_length=model_config['max_seq_len'],
-            truncate_month=model_config['truncate_month'],
-            timestamp_mode=model_config['timestamp_mode'],
-            is_training=True,
-            batch_size=train_config['batch_size'],
-            num_workers=train_config['num_workers'],
-            shuffle=True
+            crop_path=train_config['crop_paths'], gt_path=train_config['gt_paths'],
+            temp_path=train_config['temp_paths'], crop_map=train_config['crop_map'], truncate_month= model_config['truncate_month'],
+            timestamp_mode=model_config['timestamp_mode'], temp_length= model_config['max_seq_len'],
+            img_res = model_config['img_res'], batch_size=train_config['batch_size'], shuffle=True, num_workers=train_config['num_workers'],
+            is_training=True
         )
         
     # EVAL data --------------------------------------------------------------------------------------------------------
@@ -47,17 +47,17 @@ def get_dataloaders(config):
             transform=PASTIS_segmentation_transform(model_config, is_training=False),
             batch_size=eval_config['batch_size'], shuffle=False, num_workers=eval_config['num_workers'])
     elif 'Sentinel' in eval_config['dataset']:
-        eval_config['webdataset_dir'] = os.path.join(eval_config['base_dir'], DATASET_INFO[eval_config['dataset']]['paths_eval'])
+        eval_config['crop_paths'] = os.path.join(eval_config['base_dir'], DATASET_INFO[eval_config['dataset']]['crop_train'])
+        eval_config['gt_paths'] = os.path.join(eval_config['base_dir'], DATASET_INFO[eval_config['dataset']]['gt_train'])
+        eval_config['temp_paths'] = os.path.join(eval_config['base_dir'], DATASET_INFO[eval_config['dataset']]['temp_train'])
+        eval_config['crop_map'] = DATASET_INFO[eval_config['dataset']]['crop_map']
         
         dataloaders['eval'] = get_sentinel_dataloader(
-            webdataset_dir=eval_config['webdataset_dir'],
-            temp_length=model_config['max_seq_len'],
-            truncate_month=model_config['truncate_month'],
-            timestamp_mode=model_config['timestamp_mode'],
-            is_training=False,
-            batch_size=eval_config['batch_size'],
-            num_workers=eval_config['num_workers'],
-            shuffle=False
+            crop_path=eval_config['crop_paths'], gt_path=eval_config['gt_paths'],
+            temp_path=eval_config['temp_paths'], crop_map=eval_config['crop_map'], truncate_month= model_config['truncate_month'],
+            timestamp_mode=model_config['timestamp_mode'], temp_length= model_config['max_seq_len'],
+            img_res = model_config['img_res'], batch_size=eval_config['batch_size'], shuffle=False, num_workers=eval_config['num_workers'],
+            is_training=False
         )
         
     # TEST data --------------------------------------------------------------------------------------------------------
@@ -72,17 +72,17 @@ def get_dataloaders(config):
                 transform=PASTIS_segmentation_transform(model_config, is_training=False),
                 batch_size=test_config['batch_size'], shuffle=False, num_workers=test_config['num_workers'])
         elif 'Sentinel' in test_config['dataset']:
-            test_config['webdataset_dir'] = os.path.join(test_config['base_dir'], DATASET_INFO[test_config['dataset']]['paths_test'])
+            test_config['crop_paths'] = os.path.join(test_config['base_dir'], DATASET_INFO[test_config['dataset']]['crop_test'])
+            test_config['gt_paths'] = os.path.join(test_config['base_dir'], DATASET_INFO[test_config['dataset']]['gt_test'])
+            test_config['temp_paths'] = os.path.join(test_config['base_dir'], DATASET_INFO[test_config['dataset']]['temp_test'])
+            test_config['crop_map'] = DATASET_INFO[test_config['dataset']]['crop_map']
             
             dataloaders['test'] = get_sentinel_dataloader(
-                webdataset_dir=test_config['webdataset_dir'],
-                temp_length=model_config['max_seq_len'],
-                truncate_month=model_config['truncate_month'],
-                timestamp_mode=model_config['timestamp_mode'],
-                is_training=False,
-                batch_size=test_config['batch_size'],
-                num_workers=test_config['num_workers'],
-                shuffle=False
+                crop_path=test_config['crop_paths'], gt_path=test_config['gt_paths'],
+                temp_path=test_config['temp_paths'], crop_map=test_config['crop_map'], truncate_month= model_config['truncate_month'],
+                timestamp_mode=model_config['timestamp_mode'], temp_length= model_config['max_seq_len'],
+                img_res = model_config['img_res'], batch_size=test_config['batch_size'], shuffle=False, num_workers=test_config['num_workers'],
+                is_training=False
             )
     
     return dataloaders
@@ -98,35 +98,35 @@ def get_distributed_dataloaders(config, world_size, rank):
     # TRAIN data with distributed sampler
     train_config['base_dir'] = DATASET_INFO[train_config['dataset']]['basedir']
     if 'Sentinel' in train_config['dataset']:
-        train_config['webdataset_dir'] = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['paths_train'])
+        train_config['crop_paths'] = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_train'])
+        train_config['gt_paths'] = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['gt_train'])
+        train_config['temp_paths'] = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['temp_train'])
+        train_config['crop_map'] = DATASET_INFO[train_config['dataset']]['crop_map']
         
         dataloaders['train'] = get_sentinel_distr_dataloader(
-            webdataset_dir=train_config['webdataset_dir'],
-            temp_length=model_config['max_seq_len'],
+            crop_path=train_config['crop_paths'], gt_path=train_config['gt_paths'],
+            temp_path=train_config['temp_paths'], crop_map=train_config['crop_map'],
             truncate_month=model_config['truncate_month'],
-            timestamp_mode=model_config['timestamp_mode'],
-            is_training=True,
-            world_size=world_size,
-            rank=rank,
-            batch_size=train_config['batch_size'],
-            num_workers=train_config['num_workers']
+            timestamp_mode=model_config['timestamp_mode'], temp_length=model_config['max_seq_len'],
+            img_res=model_config['img_res'], is_training=True, world_size=world_size, rank=rank,
+            batch_size=train_config['batch_size'], num_workers=train_config['num_workers']
         )
     
     # EVAL data with distributed sampler
     eval_config['base_dir'] = DATASET_INFO[eval_config['dataset']]['basedir']
     if 'Sentinel' in eval_config['dataset']:
-        eval_config['webdataset_dir'] = os.path.join(eval_config['base_dir'], DATASET_INFO[eval_config['dataset']]['paths_eval'])
+        eval_config['crop_paths'] = os.path.join(eval_config['base_dir'], DATASET_INFO[eval_config['dataset']]['crop_train'])
+        eval_config['gt_paths'] = os.path.join(eval_config['base_dir'], DATASET_INFO[eval_config['dataset']]['gt_train'])
+        eval_config['temp_paths'] = os.path.join(eval_config['base_dir'], DATASET_INFO[eval_config['dataset']]['temp_train'])
+        eval_config['crop_map'] = DATASET_INFO[eval_config['dataset']]['crop_map']
         
         dataloaders['eval'] = get_sentinel_distr_dataloader(
-            webdataset_dir=eval_config['webdataset_dir'],
-            temp_length=model_config['max_seq_len'],
+            crop_path=eval_config['crop_paths'], gt_path=eval_config['gt_paths'],
+            temp_path=eval_config['temp_paths'], crop_map=eval_config['crop_map'],
             truncate_month=model_config['truncate_month'],
-            timestamp_mode=model_config['timestamp_mode'],
-            is_training=False,
-            world_size=world_size,
-            rank=rank,
-            batch_size=eval_config['batch_size'],
-            num_workers=eval_config['num_workers']
+            timestamp_mode=model_config['timestamp_mode'], temp_length=model_config['max_seq_len'],
+            img_res=model_config['img_res'], is_training=False, world_size=world_size, rank=rank,
+            batch_size=eval_config['batch_size'], num_workers=eval_config['num_workers']
         )
     
     # TEST data with distributed sampler
@@ -142,18 +142,18 @@ def get_distributed_dataloaders(config, world_size, rank):
                 world_size=world_size, rank=rank,
                 batch_size=test_config['batch_size'], num_workers=test_config['num_workers'])
         elif 'Sentinel' in test_config['dataset']:
-            test_config['webdataset_dir'] = os.path.join(test_config['base_dir'], DATASET_INFO[test_config['dataset']]['paths_test'])
+            test_config['crop_paths'] = os.path.join(test_config['base_dir'], DATASET_INFO[test_config['dataset']]['crop_test'])
+            test_config['gt_paths'] = os.path.join(test_config['base_dir'], DATASET_INFO[test_config['dataset']]['gt_test'])
+            test_config['temp_paths'] = os.path.join(test_config['base_dir'], DATASET_INFO[test_config['dataset']]['temp_test'])
+            test_config['crop_map'] = DATASET_INFO[test_config['dataset']]['crop_map']
             
             dataloaders['test'] = get_sentinel_distr_dataloader(
-                webdataset_dir=test_config['webdataset_dir'],
-                temp_length=model_config['max_seq_len'],
+                crop_path=test_config['crop_paths'], gt_path=test_config['gt_paths'],
+                temp_path=test_config['temp_paths'], crop_map=test_config['crop_map'],
                 truncate_month=model_config['truncate_month'],
-                timestamp_mode=model_config['timestamp_mode'],
-                is_training=False,
-                world_size=world_size,
-                rank=rank,
-                batch_size=test_config['batch_size'],
-                num_workers=test_config['num_workers']
+                timestamp_mode=model_config['timestamp_mode'], temp_length=model_config['max_seq_len'],
+                img_res=model_config['img_res'], is_training=False, world_size=world_size, rank=rank,
+                batch_size=test_config['batch_size'], num_workers=test_config['num_workers']
             )
     
     return dataloaders

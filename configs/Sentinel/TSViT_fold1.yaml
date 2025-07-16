@@ -24,16 +24,16 @@ DATASETS:
   train:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 32
+    batch_size: 4
     extra_data:
-    num_workers: 4
+    num_workers: 1
 
   eval:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 32   # batch size 1 for evaluation. All img_res x img_res patches per sample image
+    batch_size: 1   # batch size 1 for evaluation. All img_res x img_res patches per sample image
     extra_data:
-    num_workers: 4
+    num_workers: 1
 
   test:
     dataset: "Sentinel_fold1"
@@ -60,5 +60,5 @@ CHECKPOINT:
   partial_restore: False
   save_path: 'models/model_logs/Sentinel/TSViT_fold1.test'
   train_metrics_steps: 200
-  eval_steps: 20
+  eval_steps: 5
   save_steps: 20000000000

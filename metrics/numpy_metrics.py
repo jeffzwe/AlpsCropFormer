@@ -122,6 +122,7 @@ def get_accuracy(predicted, labels, unk_mask=None, return_splits=False):
 
 
 def get_per_class_loss(losses, labels, unk_masks=None):
+    print(f"Shapes: losses: {losses.shape}, labels: {labels.shape}, unk_masks: {unk_masks.shape if unk_masks is not None else 'None'}")
     if unk_masks is not None:
         losses = losses[unk_masks]
         labels = labels[unk_masks]

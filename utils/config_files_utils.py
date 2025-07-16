@@ -28,7 +28,8 @@ def copy_yaml(config_file):
         yfile = read_yaml(config_file)
     elif type(config_file) is dict:
         yfile = config_file
-    save_name = yfile['CHECKPOINT']['save_path'] + "/config_file.yaml"
+    base_save_name = yfile['CHECKPOINT']['save_path'] + "/config_file"
+    save_name = base_save_name + ".yaml"
     i = 1
     while os.path.isfile(save_name):
         save_name = "%s_%d.yaml" % (save_name[:-5], i)
