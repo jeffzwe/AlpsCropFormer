@@ -2,38 +2,8 @@ import numpy as np
 from sklearn.metrics import confusion_matrix
 
 
-def confusion_mat(predicted, labels, n_classes):  # , unk_masks=None):
-    """
-                predicted
-            -----------------
-    labels |
-    """
-
-    cm = confusion_matrix(labels, predicted)
-    # cm_side = cm.shape[0]
-    rem = 0
-    if cm.shape[0] < n_classes:
-        batch_classes = np.unique(np.concatenate((predicted, labels))).tolist()
-        for i in range(n_classes):
-            # internal class missing
-            if (i - rem) < len(batch_classes):
-                if i < batch_classes[i-rem]:
-                    cm = np.insert(cm, i, 0., axis=0)
-                    cm = np.insert(cm, i, 0., axis=1)
-                    rem += 1
-                    i += 1
-            # outer class(es) missing
-            else:
-                diff = n_classes - rem - len(batch_classes)
-                cm_side = cm.shape[0]
-                cm = np.concatenate((cm, np.zeros((diff, cm_side))), axis=0)
-                cm = np.concatenate((cm, np.zeros((cm_side + diff, diff))), axis=1)
-                break
-    return cm
-
-
 def get_prediction_splits(predicted, labels, n_classes):
-    cm = confusion_mat(predicted, labels, n_classes).astype(np.float32)
+    cm = confusion_matrix(labels, predicted, labels=np.arange(n_classes)).astype(np.float32)
     diag = np.diagonal(cm)
     rowsum = cm.sum(axis=1)
     colsum = cm.sum(axis=0)
@@ -41,7 +11,7 @@ def get_prediction_splits(predicted, labels, n_classes):
     FN = (rowsum - diag).astype(np.float32)
     FP = (colsum - diag).astype(np.float32)
     IOU = diag / (rowsum + colsum - diag)
-    macro_IOU = diag.sum() / (rowsum.sum() + colsum.sum() - diag.sum())
+    micro_IOU = diag.sum() / (rowsum.sum() + colsum.sum() - diag.sum())
 
     num_total = []
     num_correct = []
@@ -55,19 +25,7 @@ def get_prediction_splits(predicted, labels, n_classes):
     num_total = np.array(num_total).astype(np.float32)
     num_correct = np.array(num_correct)
 
-    return TP, FP, FN, num_correct, num_total, IOU, macro_IOU
-
-
-def get_splits(predicted, labels, n_classes):
-    num_total = []
-    num_correct = []
-    for class_ in range(n_classes):
-        idx = labels == class_
-        num_total.append(idx.sum())
-        num_correct.append((predicted[idx] == labels[idx]).mean())
-    num_total = np.array(num_total)
-    num_correct = np.array(num_correct)
-    return num_correct, num_total
+    return TP, FP, FN, num_correct, num_total, IOU, micro_IOU
 
 
 def get_metrics_from_splits(TP, FP, FN, num_correct, num_total):
@@ -108,21 +66,10 @@ def get_classification_metrics(predicted, labels, n_classes, unk_masks=None):
             'micro': [micro_acc, micro_precision, micro_recall, micro_F1, micro_IOU],
             'macro': [macro_acc, macro_precision, macro_recall, macro_F1, macro_IOU]}
 
-    
-def get_accuracy(predicted, labels, unk_mask=None, return_splits=False):
-    if unk_mask is not None:
-        predicted = predicted[unk_mask]
-        labels = labels[unk_mask]
-    is_correct = (predicted == labels).astype(float)
-    num_correct = is_correct.sum()
-    num_total = is_correct.shape[0]
-    if return_splits:
-        return num_correct, num_total
-    return num_correct / num_total
 
 
 def get_per_class_loss(losses, labels, unk_masks=None):
-    print(f"Shapes: losses: {losses.shape}, labels: {labels.shape}, unk_masks: {unk_masks.shape if unk_masks is not None else 'None'}")
+    # print(f"Shapes: losses: {losses.shape}, labels: {labels.shape}, unk_masks: {unk_masks.shape if unk_masks is not None else 'None'}")
     if unk_masks is not None:
         losses = losses[unk_masks]
         labels = labels[unk_masks]
@@ -133,3 +80,47 @@ def get_per_class_loss(losses, labels, unk_masks=None):
         class_loss.append(losses[idx].mean())
     return unique_labels, np.asarray(class_loss)
 
+
+def get_top_predictions_per_class(predicted, labels, n_classes, top_x=5):
+    """
+    For each true class, find the top x most frequently predicted classes
+    (including the correct class) and their frequencies.
+    
+    Args:
+        predicted: array of predicted labels (already filtered)
+        labels: array of true labels (already filtered)
+        n_classes: total number of classes
+        top_x: number of top predictions to return
+    
+    Returns:
+        dict: For each class, contains the top predicted classes and their counts/percentages
+    """
+    # cm = confusion_mat(predicted, labels, n_classes).astype(np.float32)
+    cm = confusion_matrix(labels, predicted, labels=np.arange(n_classes)).astype(np.float32)
+    
+    top_predictions = {}
+    
+    for true_class in range(n_classes):
+        # Get all predictions for this true class (row in confusion matrix)
+        predictions_for_class = cm[true_class, :]
+        
+        # Get top x predicted classes
+        top_indices = np.argsort(predictions_for_class)[::-1][:top_x]
+        
+        # Filter out classes with zero predictions
+        top_indices = top_indices[predictions_for_class[top_indices] > 0]
+        
+        top_counts = predictions_for_class[top_indices]
+        total_samples = cm[true_class, :].sum()
+        
+        # Calculate percentages
+        top_percentages = (top_counts / total_samples * 100) if total_samples > 0 else np.zeros_like(top_counts)
+        
+        top_predictions[true_class] = {
+            'top_classes': top_indices.tolist(),
+            'counts': top_counts.tolist(),
+            'percentages': top_percentages.tolist(),
+            'total_samples': int(total_samples)
+        }
+    
+    return top_predictions

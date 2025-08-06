@@ -24,14 +24,14 @@ DATASETS:
   train:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 8
+    batch_size: 1
     extra_data:
     num_workers: 1
 
   eval:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 8   # batch size 1 for evaluation. All img_res x img_res patches per sample image
+    batch_size: 1   # batch size 1 for evaluation. All img_res x img_res patches per sample image
     extra_data:
     num_workers: 1
 
@@ -45,7 +45,7 @@ DATASETS:
 SOLVER:
   num_epochs: 5
   num_warmup_epochs: 10
-  loss_function:  cross_entropy
+  loss_function:  masked_cross_entropy
   class_weights:
   lr_scheduler: 'cosine'
   lr_base: 1e-3
@@ -54,12 +54,11 @@ SOLVER:
   num_cycles: 1
   reset_lr: True   # resets lr to base value when loading pretrained model
   weight_decay: 0.000
-  gamma: 2.0
 
 CHECKPOINT:
-  load_from_checkpoint:
+  load_from_checkpoint: 'models/model_logs/Sentinel/TSViT_fold1.sliding_window.filtered.ceweight.0.8/6epoch_20622step.pth'
   partial_restore: False
   save_path: 'models/model_logs/Sentinel/TSViT_fold1.test'
-  train_metrics_steps: 100
-  eval_steps: 200
+  train_metrics_steps: 3
+  eval_steps: 5
   save_steps: 20000000000

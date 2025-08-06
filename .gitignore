@@ -4,3 +4,4 @@ datasets/
 .DS_Store
 .venv3.10/
 .venv3.12/
+.vscode

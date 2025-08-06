@@ -23,23 +23,12 @@ def get_loss(config, device, reduction='mean', class_weights=None):
             loss_fun.append(get_loss(config_, device, reduction=reduction))
         return loss_fun
 
-    # Contrastive Loss -----------------------------------------------------------------------
-    if loss_config['loss_function'] in ['contrastive_loss', 'masked_contrastive_loss']:
-        pos_weight = get_params_values(config['SOLVER'], 'pos_weight', 1.0)
-        print("cscl positive weight: ", pos_weight)
-        return MaskedContrastiveLoss(pos_weight=pos_weight, reduction=reduction)
-
-    # Binary Cross-Entropy Loss -----------------------------------------------------------
-    if loss_config['loss_function'] == 'binary_cross_entropy':
-        if reduction is None:
-            reduction = 'none'
-        return nn.BCEWithLogitsLoss(reduction=reduction)
-
-    if loss_config['loss_function'] == 'masked_binary_cross_entropy':
-        pos_weight = config['SOLVER']['pos_weight']
+    # Background vs Non-Background Binary Cross-Entropy Loss ------------------------------
+    if loss_config['loss_function'] == 'background_binary_cross_entropy':
+        pos_weight = get_params_values(config['SOLVER'], 'pos_weight', None)
         if pos_weight is not None:
             pos_weight = torch.tensor(pos_weight)
-        return MaskedBinaryCrossEntropy(reduction=reduction, pos_weight=pos_weight)
+        return BackgroundBinaryCrossEntropy(reduction=reduction, pos_weight=pos_weight)
 
     # Cross-Entropy Loss ------------------------------------------------------------------
     elif loss_config['loss_function'] == 'cross_entropy':
@@ -55,16 +44,14 @@ def get_loss(config, device, reduction='mean', class_weights=None):
         return MaskedCrossEntropyLoss(mean=mean)
     
     # Focal Loss --------------------------------------------------------------------------
-    elif loss_config['loss_function'] in ['focal_loss', 'masked_focal_loss']:
+    elif loss_config['loss_function'] == ['focal_loss']:
         gamma = get_params_values(loss_config, "gamma", 1.0)
-        try:
-            alpha = get_params_values(loss_config, "alpha", None)
-        except ValueError:
-            alpha = None
+        num_classes = get_params_values(model_config, 'num_classes', None)
+        weights = torch.Tensor(num_classes * [1.0]).to(device)
+        if class_weights is not None:
+            weights = torch.Tensor(class_weights)
         if loss_config['loss_function'] == 'focal_loss':
-            return FocalLoss(gamma=gamma, alpha=alpha, reduction=reduction)
-        elif loss_config['loss_function'] == 'masked_focal_loss':
-            return MaskedFocalLoss(gamma=gamma, alpha=alpha, reduction=reduction)
+            return FocalLoss(gamma=gamma, alpha= weights, reduction=reduction, num_classes=model_config['num_classes'])
 
     # Masked Multiclass Loss -----------------------------------------------------------
     elif loss_config['loss_function'] == 'masked_dice_loss':
@@ -87,55 +74,44 @@ def per_class_loss(criterion, logits, labels, unk_masks, n_classes):
     return np.nan_to_num(class_loss, nan=0.0), class_counts
 
 
-class MaskedContrastiveLoss(torch.nn.Module):
-    def __init__(self, pos_weight=1, reduction="mean"):
-        """
-        mean: return mean loss vs per element loss
-        """
-        super(MaskedContrastiveLoss, self).__init__()
-
-        self.pos_weight = pos_weight
-        self.reduction = reduction
-        self.h = 1e-7
-
-    def forward(self, logits, ground_truth):
-        if type(ground_truth) == torch.Tensor:
-            target = ground_truth
-            mask = None
-        elif len(ground_truth) == 1:
-            target = ground_truth[0]
-            mask = None
-        else:
-            target = ground_truth[0]
-            mask = ground_truth[1].to(torch.float32)
-
-        loss = - self.pos_weight * target * logits + (1 - target) * logits
-        if mask is not None:
-            loss = mask * loss
-
-        if self.reduction == "mean":
-            return loss.mean()  # loss.sum() / (mask.sum() - 1)
-        return loss
-
-
-class MaskedBinaryCrossEntropy(torch.nn.Module):
+class BackgroundBinaryCrossEntropy(torch.nn.Module):
     def __init__(self, reduction="mean", pos_weight=None):
         """
-        mean: return mean loss vs per element loss
+        Binary cross-entropy for background (0) vs non-background (!=0) classification.
+        Automatically converts multi-class labels to binary format.
         """
-        super(MaskedBinaryCrossEntropy, self).__init__()
+        super(BackgroundBinaryCrossEntropy, self).__init__()
         self.reduction = reduction
         self.loss_fn = torch.nn.BCEWithLogitsLoss(reduction=reduction, pos_weight=pos_weight)
 
     def forward(self, logits, ground_truth):
+        """
+        Args:
+            logits: (N, 1, H, W) - single channel output for binary classification
+            ground_truth: (N, H, W) or tuple with mask - multi-class labels where 0=background
+        """
         if type(ground_truth) == torch.Tensor:
             target = ground_truth
+            mask = None
         elif len(ground_truth) == 1:
             target = ground_truth[0]
+            mask = None
         else:
-            target = ground_truth[0][ground_truth[1]]
-            logits = logits[ground_truth[1]]
-        return self.loss_fn(logits, target)
+            target = ground_truth[0]
+            mask = ground_truth[1]
+        
+        # Convert multi-class labels to binary: 0 stays 0, everything else becomes 1
+        binary_target = (target != 0).float()
+        
+        # Squeeze logits to match binary target shape
+        if logits.dim() == 4 and logits.size(1) == 1:
+            logits = logits.squeeze(1)  # (N, H, W)
+        
+        if mask is not None:
+            binary_target = binary_target[mask]
+            logits = logits[mask]
+            
+        return self.loss_fn(logits, binary_target)
 
 
 class MaskedCrossEntropyLoss(torch.nn.Module):
@@ -171,6 +147,7 @@ class MaskedCrossEntropyLoss(torch.nn.Module):
         else:
             raise ValueError("ground_truth parameter for MaskedCrossEntropyLoss is either (target, mask) or (target)")
         
+        logits = logits.permute(0, 2, 3, 1)
         # OG version
         if mask is not None:
             mask_flat = mask.reshape(-1, 1)  # (N*H*W x 1)
@@ -188,86 +165,70 @@ class MaskedCrossEntropyLoss(torch.nn.Module):
             return masked_losses_flat.mean()
         return masked_losses_flat
         
-        # Use PyTorch's optimized cross_entropy with ignore_index for masking
-        if mask is not None:
-            target_masked = target.clone()
-            target_masked[~mask] = -100  # PyTorch's ignore_index
-            loss = F.cross_entropy(
-                logits.reshape(-1, logits.size(-1)), 
-                target_masked.reshape(-1), 
-                reduction='none'
-            )
-            loss = loss[target_masked.reshape(-1) != -100].unsqueeze(1)  # Match (M, 1) shape
-        else:
-            loss = F.cross_entropy(
-                logits.reshape(-1, logits.size(-1)), 
-                target.reshape(-1), 
-                reduction='none'
-            )
-            loss = loss.unsqueeze(1)  # Match original (N*H*W, 1)
-        if self.mean:
-            return loss.mean()
-        return loss
+        # # Use PyTorch's optimized cross_entropy with ignore_index for masking
+        # if mask is not None:
+        #     target_masked = target.clone()
+        #     target_masked[~mask] = -100  # PyTorch's ignore_index
+        #     loss = F.cross_entropy(
+        #         logits.reshape(-1, logits.size(-1)), 
+        #         target_masked.reshape(-1), 
+        #         reduction='none'
+        #     )
+        #     loss = loss[target_masked.reshape(-1) != -100].unsqueeze(1)  # Match (M, 1) shape
+        # else:
+        #     loss = F.cross_entropy(
+        #         logits.reshape(-1, logits.size(-1)), 
+        #         target.reshape(-1), 
+        #         reduction='none'
+        #     )
+        #     loss = loss.unsqueeze(1)  # Match original (N*H*W, 1)
+        # if self.mean:
+        #     return loss.mean()
+        # return loss
 
 
-class MaskedFocalLoss(nn.Module):
-    """
-    Credits to  github.com/clcarwin/focal_loss_pytorch
-    """
-
-    def __init__(self, gamma=0, alpha=None, reduction=None):
-        super(MaskedFocalLoss, self).__init__()
+class FocalLoss(nn.Module):
+        
+    def __init__(self, gamma=0, alpha=None, reduction=None, num_classes=None):
+        super(FocalLoss, self).__init__()
         self.gamma = gamma
         self.alpha = alpha
-        if isinstance(alpha, (float, int)): self.alpha = torch.Tensor([alpha, 1 - alpha])
-        if isinstance(alpha, list): self.alpha = torch.Tensor(alpha)
         self.reduction = reduction
+        self.num_classes = num_classes
+        # if isinstance(alpha, (float, int)): self.alpha = torch.Tensor([alpha, 1 - alpha])
+        if isinstance(self.alpha, list): self.alpha = torch.Tensor(self.alpha)
+        
+    
+    def forward(self, inputs, targets):
+        """
+        inputs: (N, C, H, W)
+        targets: (N, H, W)
+        """
+        N, C, H, W = inputs.shape
+        inputs = inputs.permute(0, 2, 3, 1).reshape(-1, C)     # (N*H*W, C)
+        targets = targets.view(-1)                             # (N*H*W,)
 
-    def forward(self, logits, ground_truth):
+        log_probs = F.log_softmax(inputs, dim=1)               # (N*H*W, C)
+        probs = torch.exp(log_probs)
 
-        if type(ground_truth) == torch.Tensor:
-            target = ground_truth
-            mask = None
-        elif len(ground_truth) == 1:
-            target = ground_truth[0]
-            mask = None
-        elif len(ground_truth) == 2:
-            target, mask = ground_truth
-        else:
-            raise ValueError("ground_truth parameter for MaskedCrossEntropyLoss is either (target, mask) or (target)")
+        log_p_t = log_probs[torch.arange(len(targets)), targets]  # (N*H*W,)
+        p_t = probs[torch.arange(len(targets)), targets]          # (N*H*W,)
 
-        target = target.reshape(-1, 1).to(torch.int64)
-        logits = logits.reshape(-1, logits.shape[-1])
-
-        if mask is not None:
-            mask = mask.reshape(-1, 1)
-            target = target[mask]
-            logits = logits[mask.repeat(1, logits.shape[-1])].reshape(-1, logits.shape[-1])
-
-        logpt = F.log_softmax(logits, dim=-1)
-        logpt = logpt.gather(-1, target.unsqueeze(-1))
-        logpt = logpt.reshape(-1)
-        pt = logpt.exp()  # Variable(logpt.data.exp())
+        focal_weight = (1 - p_t) ** self.gamma
+        loss = -log_p_t * focal_weight
 
         if self.alpha is not None:
-            if self.alpha.type() != logits.data.type():
-                self.alpha = self.alpha.type_as(logits.data)
-            at = self.alpha.gather(0, target.data.view(-1))
-            logpt = logpt * Variable(at)
+            alpha = self.alpha.to(inputs.device)
+            alpha_t = alpha[targets]
+            loss *= alpha_t
 
-        loss = -1 * (1 - pt) ** self.gamma * logpt
-
-        if self.reduction is None:
-            return loss
-        elif self.reduction == "mean":
+        if self.reduction == 'mean':
             return loss.mean()
-        elif self.reduction == "sum":
+        elif self.reduction == 'sum':
             return loss.sum()
-        else:
-            raise ValueError(
-                "FocalLoss: reduction parameter not in list of acceptable values [\"mean\", \"sum\", None]")
-
-
+        return loss.view(N, H, W)  # shape: (N, H, W), if no reduction
+    
+    
 class MaskedDiceLoss(nn.Module):
     """
     Credits to  github.com/clcarwin/focal_loss_pytorch
@@ -306,48 +267,6 @@ class MaskedDiceLoss(nn.Module):
 
         loss = 1 - 2 * inter / union
 
-        if self.reduction is None:
-            return loss
-        elif self.reduction == "mean":
-            return loss.mean()
-        elif self.reduction == "sum":
-            return loss.sum()
-        else:
-            raise ValueError(
-                "FocalLoss: reduction parameter not in list of acceptable values [\"mean\", \"sum\", None]")
-
-
-class FocalLoss(nn.Module):
-    """
-    Credits to  github.com/clcarwin/focal_loss_pytorch
-    """
-    def __init__(self, gamma=0, alpha=None, reduction=None):
-        super(FocalLoss, self).__init__()
-        self.gamma = gamma
-        self.alpha = alpha
-        if isinstance(alpha, (float, int)): self.alpha = torch.Tensor([alpha, 1 - alpha])
-        if isinstance(alpha, list): self.alpha = torch.Tensor(alpha)
-        self.reduction = reduction
-        
-    def forward(self, input, target):
-        if input.dim() > 2:
-            input = input.view(input.size(0), input.size(1), -1)  # N,C,H,W => N,C,H*W
-            input = input.transpose(1, 2)  # N,C,H*W => N,H*W,C
-            input = input.contiguous().view(-1, input.size(2))  # N,H*W,C => N*H*W,C
-        target = target.view(-1, 1)
-
-        logpt = F.log_softmax(input, dim=1)
-        logpt = logpt.gather(1, target)
-        logpt = logpt.view(-1)
-        pt = Variable(logpt.data.exp())
-
-        if self.alpha is not None:
-            if self.alpha.type() != input.data.type():
-                self.alpha = self.alpha.type_as(input.data)
-            at = self.alpha.gather(0, target.data.view(-1))
-            logpt = logpt * Variable(at)
-
-        loss = -1 * (1 - pt) ** self.gamma * logpt
         if self.reduction is None:
             return loss
         elif self.reduction == "mean":

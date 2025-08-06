@@ -6,6 +6,7 @@ import io
 import pandas as pd
 import numpy as np
 import webdataset as wds
+from itertools import islice
 from data.Sentinel.data_transforms import (
     TruncateTimeDimension, SlidingWindowSubsample, AdaptiveTemperatureSubsampling,
     NoSlidingSubsample, TemperatureCalendarNoSlidingSubsample, TileDates,
@@ -177,14 +178,16 @@ def get_distr_dataloader(webdataset_dir, temp_length, truncate_month, timestamp_
         )
     
         # Unbatch, shuffle between workers, then rebatch for better mixing
-        # dataloader = dataloader.unbatched().shuffle(1000).batched(batch_size)
+        dataloader = dataloader.unbatched().shuffle(2000).batched(batch_size)
     
         # Set epoch size based on estimated samples per world_size
-        dataloader = dataloader.with_epoch(1_300_000 // world_size)
+        dataloader = dataloader.with_epoch(880_000 // (batch_size * world_size)).with_length(880_000 // (batch_size * world_size))
         
     else:
+        rank_shards = list(islice(shards, rank, None, world_size))
+            
         dataset = (
-            wds.WebDataset(shards, shardshuffle=False, resampled=False, nodesplitter=wds.split_by_node, workersplitter= wds.split_by_worker)
+            wds.WebDataset(rank_shards, shardshuffle=False, resampled=False, workersplitter= wds.split_by_worker)
             .map(transform_fn)
             .batched(batch_size)
         )
@@ -192,16 +195,15 @@ def get_distr_dataloader(webdataset_dir, temp_length, truncate_month, timestamp_
         dataloader = wds.WebLoader(
             dataset, 
             num_workers=num_workers, 
-            batch_size=None,
-            pin_memory=True
+            batch_size=None
         )
     
     return dataloader
 
 
-def get_class_weights(pixel_count_file, label_sheet_file, beta=0.9):
+def get_class_weights(pixel_count_file, label_sheet_file, power=1.0):
     """
-    Calculate class weights from pixel counts (standalone function)
+    Calculate class weights from pixel counts
     """
     # Load label mapping
     label_sheet = pd.read_csv(label_sheet_file)
@@ -231,12 +233,14 @@ def get_class_weights(pixel_count_file, label_sheet_file, beta=0.9):
         if lnf_code in target_mapping:
             class_id = target_mapping[lnf_code]
             class_counts[class_id] += count
+    # Filtered background pixel count
+    class_counts[0] = 83764016
     
-    missing = class_counts == 0
-    effective_num = 1.0 - np.power(beta, class_counts)
-    effective_num[effective_num <= 0] = 1e-6
-    weights = (1.0 - beta) / effective_num
-    weights[missing] = 1e-6
+    powered_counts = np.power(class_counts, power)
+    weights = 1.0 / powered_counts
+    weights[class_counts == 0] = 0.0
+    
+    # Normalize
     weights = weights / np.sum(weights) * num_classes
     
     return weights

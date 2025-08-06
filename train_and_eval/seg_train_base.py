@@ -14,7 +14,7 @@ from utils.config_files_utils import read_yaml, copy_yaml, get_params_values
 from utils.torch_utils import get_device, get_net_trainable_params, load_from_checkpoint
 from data import get_dataloaders
 from metrics.torch_metrics import get_mean_metrics
-from metrics.numpy_metrics import get_classification_metrics, get_per_class_loss
+from metrics.numpy_metrics import get_classification_metrics, get_per_class_loss, get_top_predictions_per_class
 from metrics.loss_functions import get_loss
 from utils.summaries import write_mean_summaries, write_class_summaries
 from data import get_loss_data_input
@@ -27,7 +27,6 @@ def train_and_evaluate(net, dataloaders, config, device):
     def train_step(net, sample, loss_fn, optimizer, device, loss_input_fn):
         optimizer.zero_grad()
         outputs = net(sample['inputs'].to(device))
-        outputs = outputs.permute(0, 2, 3, 1)
         ground_truth = loss_input_fn(sample, device)
         loss = loss_fn['mean'](outputs, ground_truth)
         loss.backward()
@@ -37,6 +36,7 @@ def train_and_evaluate(net, dataloaders, config, device):
   
     def evaluate(net, evalloader, loss_fn, config):
         num_classes = config['MODEL']['num_classes']
+        loss_function = config['SOLVER']['loss_function']
         predicted_all = []
         labels_all = []
         losses_all = []
@@ -44,17 +44,17 @@ def train_and_evaluate(net, dataloaders, config, device):
         with torch.no_grad():
             for step, sample in enumerate(tqdm(evalloader, desc="Evaluating")):
                 logits = net(sample['inputs'].to(device))
-                logits = logits.permute(0, 2, 3, 1)
-                _, predicted = torch.max(logits.data, -1)
+                _, predicted = torch.max(logits.data, 1)
                 ground_truth = loss_input_fn(sample, device)
                 loss = loss_fn['all'](logits, ground_truth)
-                target, mask = ground_truth
-                if mask is not None:
+                
+                if loss_function == 'masked_cross_entropy':
+                    target, mask = ground_truth
                     predicted_all.append(predicted.flatten()[mask.flatten()].cpu().numpy())
                     labels_all.append(target.flatten()[mask.flatten()].cpu().numpy())
                 else:
                     predicted_all.append(predicted.flatten().cpu().numpy())
-                    labels_all.append(target.flatten().cpu().numpy())
+                    labels_all.append(ground_truth.flatten().cpu().numpy())
                 losses_all.append(loss.flatten().cpu().detach().numpy())
 
         print("finished iterating over dataset after step %d" % step)
@@ -65,6 +65,8 @@ def train_and_evaluate(net, dataloaders, config, device):
 
         eval_metrics = get_classification_metrics(predicted=predicted_classes, labels=target_classes,
                                                   n_classes=num_classes, unk_masks=None)
+        
+        top_preds = get_top_predictions_per_class(predicted_classes, target_classes, num_classes, top_x=5)
 
         micro_acc, micro_precision, micro_recall, micro_F1, micro_IOU = eval_metrics['micro']
         macro_acc, macro_precision, macro_recall, macro_F1, macro_IOU = eval_metrics['macro']
@@ -78,10 +80,19 @@ def train_and_evaluate(net, dataloaders, config, device):
               "precision: %.4f/%.4f, recall: %.4f/%.4f, F1: %.4f/%.4f, unique pred labels: %s" %
               (losses.mean(), micro_IOU, macro_IOU, micro_acc, macro_acc, micro_precision, macro_precision,
                micro_recall, macro_recall, micro_F1, macro_F1, np.unique(predicted_classes)))
+        
+        for true_class, data in top_preds.items():
+            print(f"True class {true_class} (total samples: {data['total_samples']}):")
+            for i, (pred_class, count, percentage) in enumerate(zip(data['top_classes'], data['counts'], data['percentages'])):
+                status = "(correct)" if pred_class == true_class else "(misclassified)"
+                print(f"  Top {i+1}: predicted as class {pred_class} ({count} times, {percentage:.1f}%) {status}")
         print(
             "-----------------------------------------------------------------------------------------------------------------------------------------------------------------")
 
-        return (un_labels,
+        for i, val in zip(np.arange(num_classes), class_acc):
+            print("Class %d: Accuracy: %.4f" % (i, val))
+        
+        return (np.arange(num_classes),
                 {"macro": {"Loss": losses.mean(), "Accuracy": macro_acc, "Precision": macro_precision,
                            "Recall": macro_recall, "F1": macro_F1, "IOU": macro_IOU},
                  "micro": {"Loss": losses.mean(), "Accuracy": micro_acc, "Precision": micro_precision,
@@ -123,12 +134,13 @@ def train_and_evaluate(net, dataloaders, config, device):
     copy_yaml(config)
     
     # Only needed for loss_function = 'cross_entropy'
-    class_weigts = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', beta=0.99999)
+    # class_weigts = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', beta=0.99999)
+    class_weights = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', power=0.25)
 
     loss_input_fn = get_loss_data_input(config)
     
-    loss_fn = {'all': get_loss(config, device, reduction=None, class_weights=class_weigts),
-               'mean': get_loss(config, device, reduction="mean", class_weights=class_weigts)}
+    loss_fn = {'all': get_loss(config, device, reduction='none', class_weights=class_weights),
+               'mean': get_loss(config, device, reduction="mean", class_weights=class_weights)}
 
     trainable_params = get_net_trainable_params(net)
     optimizer = optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
@@ -160,7 +172,6 @@ def train_and_evaluate(net, dataloaders, config, device):
                     unk_masks = None
                 # print batch statistics ----------------------------------------------------------------------------------#
                 if abs_step % train_metrics_steps == 0:
-                    logits = logits.permute(0, 3, 1, 2)
                     batch_metrics = get_mean_metrics(
                         logits=logits, labels=labels, unk_masks=unk_masks, n_classes=num_classes, loss=loss, epoch=epoch,
                         step=step)
@@ -189,8 +200,7 @@ def train_and_evaluate(net, dataloaders, config, device):
 
                     write_mean_summaries(writer, eval_metrics[1]['micro'], abs_step, mode="eval_micro", optimizer=None)
                     write_mean_summaries(writer, eval_metrics[1]['macro'], abs_step, mode="eval_macro", optimizer=None)
-                    write_class_summaries(writer, [eval_metrics[0], eval_metrics[1]['class']], abs_step, mode="eval",
-                                        optimizer=None)
+                    write_class_summaries(writer, [eval_metrics[0], eval_metrics[1]['class']], abs_step, mode="eval", optimizer=None)
                     net.train()
                 pbar.update(1)
 
@@ -204,13 +214,10 @@ if __name__ == "__main__":
     parser.add_argument('--config_file', help='configuration (.yaml) file to use')
     parser.add_argument('--device', default='0', type=str,
                          help='gpu ids to use')
-    parser.add_argument('--lin', action='store_true',
-                         help='train linear classifier only')
 
     args = parser.parse_args()
     config_file = args.config_file
     device_ids = [int(d) for d in args.device.split(',')]
-    lin_cls = args.lin
 
     device = get_device(device_ids, allow_cpu=True)  # Allow CPU for apple silicon compatibility
 
@@ -218,99 +225,39 @@ if __name__ == "__main__":
     config['local_device_ids'] = device_ids
 
     dataloaders = get_dataloaders(config)
-    
-    #######   Testing Dataloader   #############
-    
-    # try:
-    #     train_iter = iter(dataloaders['train'])
-    #     sample = next(train_iter)
-    #     print("Sample Input Dim: ", sample['inputs'].shape)
-    #     print("Mask Dim: ", sample['unk_masks'].shape)
-    #     print("Label Dim: ", sample['labels'].shape)
-        
-        # for sample in dataloaders['eval']:
-        # #     print("Sample Input Dim: ", sample['inputs'].shape)
-        # #     print("Mask Dim: ", sample['unk_masks'].shape)
-        # #     print("Label Dim: ", sample['labels'].shape)
-        #     pass
-        
-        # Timing infrastructure for dataloader
-    #     import time
-    #     print("Starting precise dataloader timing test...")
-        
-    #     dataloader_iter = iter(dataloaders['train'])
-    #     batch_times = []
-        
-    #     for batch_idx in range(100):  # Test 50 batches
-    #         try:
-    #             # Time the actual data loading
-    #             load_start = time.time()
-    #             sample = next(dataloader_iter)  # This is where WebDataset transforms run
-    #             load_time = time.time() - load_start
-                
-    #             # Quick access to verify data
-    #             inputs = sample['inputs']
-    #             batch_size = inputs.shape[0]
-                
-    #             batch_times.append(load_time)
-                
-    #             if batch_idx % 10 == 0:
-    #                 print(f"Batch {batch_idx}: {load_time:.4f}s, "
-    #                       f"Batch size: {batch_size}, Shape: {inputs.shape}")
-                    
-    #         except StopIteration:
-    #             print(f"Dataloader exhausted after {batch_idx} batches")
-    #             break
-    #     batch_times = batch_times[15:] 
-        
-    #     if batch_times:
-    #         avg_time = np.mean(batch_times)
-    #         print(f"\nAverage batch loading time: {avg_time:.4f}s")
-    #         print(f"Min: {np.min(batch_times):.4f}s, Max: {np.max(batch_times):.4f}s")
-    # finally:
-    #     # Clean up resources
-    #     del dataloader_iter
-    #     # Force garbage collection
-    #     import gc
-    #     gc.collect()
-    
-    #######   Testing Dataloader   #############
-    
-    #######   Testing Dataset   #############
-    # from data.Sentinel.dataloader import Sentinel2Dataset
-    
-    # DATASET_INFO = read_yaml("data/datasets.yaml")
-    
-    # model_config = config['MODEL']
-    # train_config = config['DATASETS']['train']
-    # eval_config  = config['DATASETS']['eval']
-    # train_config['base_dir'] = DATASET_INFO[train_config['dataset']]['basedir']
-    # crop_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_train'])
-    # gt_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['gt_train'])
-    # temp_path = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['temp_train'])
-    # crop_map = os.path.join(train_config['base_dir'], DATASET_INFO[train_config['dataset']]['crop_map'])
-    # temp_length= model_config['max_seq_len']
-    # cropping_mode = model_config['cropping_mode']
-    # img_res = model_config['img_res']
-    
-    # # 'base', 'sliding_window', 'temp_sw', 'temp_no_sw', 'temp_subsample'
-    # dataset = Sentinel2Dataset(crop_path, gt_path, temp_path, label_sheet_file=crop_map, temporal_length=temp_length, 
-    #                                 truncate_portion=1.0, timestamp_mode='temp_subsample', cropping_mode=cropping_mode,
-    #                                 img_res=img_res)
-    
-    # inputs, unk_masks, labels = dataset[0]
-    # print("Image shape: ", inputs[0].shape)
-    # print("Ground truth shape: ", labels[0].shape)
-    # print("Unk mask: ", unk_masks[0].shape)
-    
-    # print("Image shape: ", len(inputs))
-    # print("Ground truth shape: ", len(labels))
-    # print("Unk mask: ", len(unk_masks))
-    
-    # print("Unique labels:", np.unique(labels[0]))
-    
-    #######   Testing Dataset  #############
-
     net = get_model(config, device)
+    
+    class_weigts = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', power=1.0)
+    
+    for class_id, weight in enumerate(class_weigts):
+        print(f"Class {class_id}: Weight: {weight}")
+        
+    
+    ############################
+    # checkpoint = config['CHECKPOINT']["load_from_checkpoint"]
+    # if checkpoint:
+    #     load_from_checkpoint(net, checkpoint, partial_restore=False, device=device)
+        
+    # train_iter = iter(dataloaders['train'])
+    # sample = next(train_iter)
+    ###########################
+    # print(net.mlp_head)
+    # linear = net.mlp_head[1]
 
-    train_and_evaluate(net, dataloaders, config, device)
+    # print("Weight mean:", linear.weight.data.mean().item())
+    # print("Weight std:", linear.weight.data.std().item())
+    # print("Bias mean:", linear.bias.data.mean().item())
+    # print("Bias std:", linear.bias.data.std().item())
+    ##########################
+    # print('Sample input shape:', sample['inputs'].shape)
+    # print('Lookin at channel 0:', sample['inputs'][0, 0, :, :, 10])
+    
+    # outputs = net(sample['inputs'].to(device))
+    
+    # print('Model output shape:', outputs.shape)
+    # print('Ground truth shape:', sample['labels'].to(device).shape)
+    # print('Model output', outputs[0,:,:,:])
+    # print('Ground truth:', sample['labels'].to(device)[0,:,:])
+    ############################
+
+    # train_and_evaluate(net, dataloaders, config, device)

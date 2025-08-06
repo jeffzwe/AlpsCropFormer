@@ -89,14 +89,52 @@ class UnkMask(object):
     def __call__(self, sample):
         images, cloud_mask, ground_truth = sample
         
-        # Create unknown mask based on ground_truth (valid = valid class)
-        # TODO I'm assuming class 31 is unknown, adjust if needed
-        unk_masks = (ground_truth == 31).astype(np.bool_)
+        ######## class aggregation ###########################################
+        # aggregation_mapping = {
+        #     # Meadow + Pasture
+        #     36: 1, 37: 1,
+        #     # Soft winter wheat (WinterWheat, Wheat, Spelt, Rye, EinkornWheat)
+        #     9: 2, 4: 2, 11: 2, 10: 2, 7: 2,
+        #     6: 3,   # Corn (Maize)
+        #     2: 4,   # Winter barley
+        #     16: 5,  # Winter rapeseed
+        #     1: 6,   # Spring barley (SummerBarley)
+        #     18: 7,  # Sunflower
+        #     39: 8,  # Grapevine
+        #     12: 9, 13: 9,  # Beet (Sugar_beets, Beets)
+        #     27: 10, 24: 10, 25: 10, 28: 10, 30: 10, 46: 10,  # Fruits, vegetables, flowers
+        #     14: 11,  # Potatoes
+        #     21: 12, 22: 12, 23: 12, 38: 12,  # Leguminous fodder
+        #     17: 13,  # Soybeans
+        #     40: 14, 41: 14, 42: 14, 44: 14, 45: 14,  # Orchard
+        #     34: 15, 5: 15, 3: 15, 29: 15,  # Mixed cereal
+        #     26: 16,  # Sorghum
+        #     8: 17,   # SummerWheat (standalone)
+        #     15: 18,  # SummerRapeseed (standalone)
+        #     19: 19,  # Linen (standalone)
+        #     20: 20,  # Hemp (standalone)
+        # }
+
+        # delete_indices = {
+        #     31, 32, 33, 35, 43, 47, 48, 49, 50, 51, 52
+        # }
         
-        # Create unknown mask as all ones with shape H×W
+        # def map_indices(input_array):
+        #     # Create a vectorized mapping function
+        #     vectorized_map = np.vectorize(lambda x: aggregation_mapping.get(x, x))
+        #     return vectorized_map(input_array)
+        
+        # ground_truth = map_indices(ground_truth)
+        # unk_masks = ~np.isin(ground_truth, list(delete_indices))
+        ######################################################################
+        
+        # Create unknown mask based on leave out class
+        # unk_masks = (ground_truth != 31).astype(bool)
+        
+        # Create unknown mask when all classes are considered
         # Extract height and width from ground_truth
-        # H, W = ground_truth.shape[0], ground_truth.shape[1]
-        # unk_masks = np.ones((H, W), dtype=np.bool_)
+        H, W = ground_truth.shape[0], ground_truth.shape[1]
+        unk_masks = np.ones((H, W), dtype=np.bool_)
         
         return images, unk_masks, ground_truth
 

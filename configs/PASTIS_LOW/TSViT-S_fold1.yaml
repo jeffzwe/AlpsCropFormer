@@ -60,7 +60,7 @@ SOLVER:
   confidence_threshold: 0.99
 
 CHECKPOINT:
-  load_from_checkpoint:
+  load_from_checkpoint: 'models/model_logs/PASTIS_LOW/TSViT-S_fold1.img16/best.pth'
   partial_restore: False
   save_path: 'models/model_logs/PASTIS_LOW/TSViT-S_fold1.img16.debug'
   train_metrics_steps: 184

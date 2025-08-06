@@ -32,7 +32,7 @@ def copy_yaml(config_file):
     save_name = base_save_name + ".yaml"
     i = 1
     while os.path.isfile(save_name):
-        save_name = "%s_%d.yaml" % (save_name[:-5], i)
+        save_name = "%s_%d.yaml" % (base_save_name, i)
         i += 1
     with open(save_name, 'w') as outfile:
         yaml.dump(yfile, outfile, default_flow_style=False)

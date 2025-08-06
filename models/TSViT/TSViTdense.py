@@ -412,6 +412,8 @@ class TSViT(nn.Module):
             nn.LayerNorm(self.dim),
             nn.Linear(self.dim, self.patch_size**2)
         )
+        nn.init.xavier_uniform_(self.mlp_head[1].weight)
+        nn.init.zeros_(self.mlp_head[1].bias)
 
     def forward(self, x):
         x = x.permute(0, 1, 4, 2, 3)

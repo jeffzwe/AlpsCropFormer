@@ -22,7 +22,7 @@ from data import get_loss_data_input
 from tqdm import tqdm
 
 
-def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
+def train_and_evaluate(net, dataloaders, config, device):
     
     def train_step(net, sample, loss_fn, optimizer, device, loss_input_fn):
         optimizer.zero_grad()
@@ -31,9 +31,11 @@ def train_and_evaluate(net, dataloaders, config, device, lin_cls=False):
         outputs = outputs.permute(0, 2, 3, 1)
         ground_truth = loss_input_fn(sample, device)
         loss = loss_fn(outputs, ground_truth)
+        print("loss shape: ", loss.shape)
         
         # Scale loss by truncation_ratio if it exists in the sample
         truncation_ratio = sample['weight_ratio'].to(device)
+        print("truncation_ratio shape: ", truncation_ratio.shape)
         loss = loss * truncation_ratio
         loss = loss.mean()    
         loss.backward()
