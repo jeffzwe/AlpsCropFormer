@@ -27,7 +27,7 @@ def my_collate(batch):
     # Stack all at once
     inputs = torch.from_numpy(np.stack(images)).float()
     unk_masks = torch.from_numpy(np.stack(unk_masks))[..., None]
-    labels = torch.from_numpy(np.stack(labels))[..., None]
+    labels = torch.from_numpy(np.stack(labels)).long()[..., None]
 
     return {
         'inputs': inputs,
@@ -40,7 +40,7 @@ def get_dataloader(crop_path, gt_path, temp_path, crop_map, temp_length, truncat
     
     dataset = Sentinel2Dataset(crop_path, gt_path, temp_path, label_sheet_file=crop_map, temporal_length=temp_length, img_res=img_res,
                                truncate_month=truncate_month, timestamp_mode=timestamp_mode, is_training=is_training)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0,
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers,
                                              collate_fn=my_collate)
     return dataloader
 
@@ -105,25 +105,8 @@ class Sentinel2Dataset(Dataset):
         self.num_classes = 0
         self.mapping_dict = None
 
-        # Channel statistics
-        self.channel_stats = {
-            's2_B02': {'mean': 1962.10, 'std': 5731.00},
-            's2_B03': {'mean': 2106.59, 'std': 5656.44},
-            's2_B04': {'mean': 2028.38, 'std': 5662.33},
-            's2_B08': {'mean': 3797.36, 'std': 5362.84},
-            's2_B05': {'mean': 2430.80, 'std': 5590.77},
-            's2_B06': {'mean': 3380.80, 'std': 5408.80},
-            's2_B07': {'mean': 3681.89, 'std': 5354.31},
-            's2_B8A': {'mean': 3851.88, 'std': 5307.00},
-            's2_B12': {'mean': 1582.97, 'std': 5161.84}
-        }
-        self.channel_means = np.array([self.channel_stats[band]['mean'] for band in self.bands], dtype=np.float32)
-        self.channel_stds = np.array([self.channel_stats[band]['std'] for band in self.bands], dtype=np.float32)
-
         self.map_lnf_code_to_ground_truth()
         self.transform = Sentinel_transform(
-            channel_means=self.channel_means,
-            channel_stds=self.channel_stds,
             temporal_length=self.temporal_length,
             truncate_month=self.truncate_month,
             condition=self.condition,
@@ -131,18 +114,6 @@ class Sentinel2Dataset(Dataset):
             img_res=self.img_res,
             is_training=self.is_training
         )
-
-        if is_training:
-            print(f"Number of classes: {self.num_classes}")
-            print(f"Temporal length: {self.temporal_length}")
-            print(f"Number of S2 bands: {len(self.bands)}")
-            print(f"Bands: {self.bands}")
-            print(f"Dataset size: {len(self.data_files)}")
-            # print(f"LNF code mapping: {self.target_mapping}")
-            # print(f"Channel Means: {[f'{mean:.2f}' for mean in self.channel_means]}")
-            # print(f"Channel Stds: {[f'{std:.2f}' for std in self.channel_stds]}")
-            print(f"timestamp_mode: {self.timestamp_mode}")
-            print(f"truncate_month: {self.truncate_month}")
 
     def _get_data_files(self):
         data_files = []

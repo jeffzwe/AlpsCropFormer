@@ -1,7 +1,6 @@
 import numpy as np
 from sklearn.metrics import confusion_matrix
 
-
 def get_prediction_splits(predicted, labels, n_classes):
     cm = confusion_matrix(labels, predicted, labels=np.arange(n_classes)).astype(np.float32)
     diag = np.diagonal(cm)
@@ -67,9 +66,7 @@ def get_classification_metrics(predicted, labels, n_classes, unk_masks=None):
             'macro': [macro_acc, macro_precision, macro_recall, macro_F1, macro_IOU]}
 
 
-
 def get_per_class_loss(losses, labels, unk_masks=None):
-    # print(f"Shapes: losses: {losses.shape}, labels: {labels.shape}, unk_masks: {unk_masks.shape if unk_masks is not None else 'None'}")
     if unk_masks is not None:
         losses = losses[unk_masks]
         labels = labels[unk_masks]
@@ -79,7 +76,6 @@ def get_per_class_loss(losses, labels, unk_masks=None):
         idx = labels == label
         class_loss.append(losses[idx].mean())
     return unique_labels, np.asarray(class_loss)
-
 
 def get_top_predictions_per_class(predicted, labels, n_classes, top_x=5):
     """
@@ -95,7 +91,6 @@ def get_top_predictions_per_class(predicted, labels, n_classes, top_x=5):
     Returns:
         dict: For each class, contains the top predicted classes and their counts/percentages
     """
-    # cm = confusion_mat(predicted, labels, n_classes).astype(np.float32)
     cm = confusion_matrix(labels, predicted, labels=np.arange(n_classes)).astype(np.float32)
     
     top_predictions = {}
@@ -124,3 +119,28 @@ def get_top_predictions_per_class(predicted, labels, n_classes, top_x=5):
         }
     
     return top_predictions
+
+
+# Not used but might be useful later
+
+# def get_splits(predicted, labels, n_classes):
+#     num_total = []
+#     num_correct = []
+#     for class_ in range(n_classes):
+#         idx = labels == class_
+#         num_total.append(idx.sum())
+#         num_correct.append((predicted[idx] == labels[idx]).mean())
+#     num_total = np.array(num_total)
+#     num_correct = np.array(num_correct)
+#     return num_correct, num_total
+
+# def get_accuracy(predicted, labels, unk_mask=None, return_splits=False):
+#     if unk_mask is not None:
+#         predicted = predicted[unk_mask]
+#         labels = labels[unk_mask]
+#     is_correct = (predicted == labels).astype(float)
+#     num_correct = is_correct.sum()
+#     num_total = is_correct.shape[0]
+#     if return_splits:
+#         return num_correct, num_total
+#     return num_correct / num_total

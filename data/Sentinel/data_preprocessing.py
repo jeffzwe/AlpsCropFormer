@@ -42,21 +42,6 @@ class PreprocessingDataset(Dataset):
 
         self.data_files = self._get_data_files()
         
-        # Channel statistics (same as Sentinel2Dataset)
-        self.channel_stats = {
-            's2_B02': {'mean': 1962.10, 'std': 5731.00},
-            's2_B03': {'mean': 2106.59, 'std': 5656.44},
-            's2_B04': {'mean': 2028.38, 'std': 5662.33},
-            's2_B08': {'mean': 3797.36, 'std': 5362.84},
-            's2_B05': {'mean': 2430.80, 'std': 5590.77},
-            's2_B06': {'mean': 3380.80, 'std': 5408.80},
-            's2_B07': {'mean': 3681.89, 'std': 5354.31},
-            's2_B8A': {'mean': 3851.88, 'std': 5307.00},
-            's2_B12': {'mean': 1582.97, 'std': 5161.84}
-        }
-        self.channel_means = np.array([self.channel_stats[band]['mean'] for band in self.bands], dtype=np.float32)
-        self.channel_stds = np.array([self.channel_stats[band]['std'] for band in self.bands], dtype=np.float32)
-        
         # Setup transforms
         self.remove_duplicates = RemoveDuplicateTimestamps()
         # Setup label mapping
@@ -189,6 +174,10 @@ def save_to_webdataset(dataset, output_dir, samples_per_shard=10000, max_samples
             
             # Process each patch in the batch
             for i in range(len(batch_images)):
+                
+                if (batch_ground_truths[i] == 0).all():
+                    continue
+    
                 if sample_id % samples_per_shard == 0:
                     if sink is not None:
                         sink.close()
@@ -235,16 +224,16 @@ if __name__ == "__main__":
     # Hardcoded dataset info (replacing read_yaml("data/datasets.yaml"))
     DATASET_INFO = {
         'Sentinel_fold1': {
-            'basedir': '/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/Sentinel_mini',
-            'crop_train': 'Sentinel_Crop_2022',
-            'crop_eval': 'Sentinel_Crop_2023', 
-            'crop_test': 'Sentinel_Crop_2021',
-            'gt_train': 'Sentinel_GT_2022',
-            'gt_eval': 'Sentinel_GT_2023',
-            'gt_test': 'Sentinel_GT_2021',
-            'temp_train': 'Sentinel_Temp_2022',
-            'temp_eval': 'Sentinel_Temp_2023',
-            'temp_test': 'Sentinel_Temp_2021',
+            'basedir': '/srv/data',
+            'crop_train': 'Sentinel_2022',
+            'crop_eval': 'Sentinel_2023', 
+            'crop_test': 'Sentinel_2021',
+            'gt_train': 'Crop_GTs_2022',
+            'gt_eval': 'Crop_GTs_2023',
+            'gt_test': 'Crop_GTs_2021',
+            'temp_train': 'Temp_Calendar_2022',
+            'temp_eval': 'Temp_Calendar_2023',
+            'temp_test': 'Temp_Calendar_2021',
             'crop_map': 'crop_mappings.csv'
         }
     }
@@ -301,40 +290,23 @@ if __name__ == "__main__":
     
     ####################################################
     
-    # valid_patches, valid_time_stamps, valid_cloud_masks, valid_ground_truths, temp_cal = datasets['train'][0]
-    
-    # if len(valid_patches) > 0:
-    #     print("Number of valid patches: ", len(valid_patches))
-    #     print("First patch image shape: ", valid_patches[0].dtype)
-    #     print("First patch ground truth shape: ", valid_ground_truths[0].dtype)
-    #     print("First patch cloud mask shape: ", valid_cloud_masks[0].dtype)
-    #     print("First patch time stamps shape: ", valid_time_stamps[0].dtype)
-    #     print("Temperature calendar shape: ", temp_cal.dtype)
-        
-    #     print("\nAll patches info:")
-    #     for i in range(len(valid_patches)):
-    #         print(f"Patch {i}: image {valid_patches[i].shape}, gt {valid_ground_truths[i].shape}, "
-    #               f"cloud_mask {valid_cloud_masks[i].shape}, timestamps {valid_time_stamps[i].shape}")
-    # else:
-    #     print("No valid patches found in the first sample")
-    
     save_to_webdataset(
         dataset=datasets['train'],
-        output_dir="/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/Sentinel_mini/preprocessed/CropFormer2022",
-        samples_per_shard=10000,
+        output_dir="datasets/CropFormer2022_filtered",
+        samples_per_shard=10_000,
         max_samples=5_000_000
     )
     
     save_to_webdataset(
         dataset=datasets['eval'],
-        output_dir="/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/Sentinel_mini/preprocessed/CropFormer2023",
-        samples_per_shard=10000,
+        output_dir="datasets/CropFormer2023_filtered",
+        samples_per_shard=10_000,
         max_samples=5_000_000
     )
     
     save_to_webdataset(
         dataset=datasets['test'],
-        output_dir="/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/Sentinel_mini/preprocessed/CropFormer2021",
+        output_dir="datasets/CropFormer2021_filtered",
         samples_per_shard=10000,
         max_samples=5_000_000
     )

@@ -160,29 +160,14 @@ def get_distributed_dataloaders(config, world_size, rank):
 
 
 def get_loss_data_input(config):
-    
-    def ground_truths(sample, device):
-        return sample['labels'].to(device)
 
-    def masked_ground_truths(sample, device):
+    def segmentation_ground_truths(sample, device):
         labels = sample['labels'].to(device)
         if 'unk_masks' in sample.keys():
             unk_masks = sample['unk_masks'].to(device)
         else:
             unk_masks = None
-
-        if 'edge_labels' in sample.keys():
-            edge_labels = sample['edge_labels'].to(device)
-            return labels, edge_labels, unk_masks
         return labels, unk_masks
+    
+    return segmentation_ground_truths
 
-    if config['SOLVER']['loss_function'] == 'cross_entropy':
-        return ground_truths
-    elif config['SOLVER']['loss_function'] == 'masked_cross_entropy':
-        return masked_ground_truths
-    elif config['SOLVER']['loss_function'] == 'focal_loss':
-        return ground_truths
-    elif config['SOLVER']['loss_function'] == 'masked_focal_loss':
-        return masked_ground_truths
-    else:
-        raise ValueError(f"Unknown loss function: {config['SOLVER']['loss_function']}")

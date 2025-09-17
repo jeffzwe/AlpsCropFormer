@@ -1,4 +1,6 @@
-# Install torch, torchvision, and torchaudio separately
+# manually do: pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# Other dependencies
 absl-py==2.3.0
 affine==2.4.0
 asciitree==0.3.3
@@ -35,7 +37,6 @@ pyproj==3.7.1
 python-dateutil==2.9.0.post0
 pytz==2025.2
 PyYAML==6.0.2
-rasterio==1.3.9
 requests==2.32.4
 scikit-learn==1.7.0
 scipy==1.15.3

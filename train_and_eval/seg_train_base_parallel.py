@@ -14,14 +14,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 from models import get_model
 from utils.config_files_utils import read_yaml, copy_yaml, get_params_values
-from utils.torch_utils import get_device, get_net_trainable_params, load_from_checkpoint
+from utils.torch_utils import get_net_trainable_params, load_from_checkpoint
 from data import get_distributed_dataloaders
-from metrics.torch_metrics import get_mean_metrics
+from metrics.torch_metrics import get_mean_metrics, get_binary_metrics
 from metrics.numpy_metrics import get_classification_metrics, get_per_class_loss, get_top_predictions_per_class
 from metrics.loss_functions import get_loss
 from utils.summaries import write_mean_summaries, write_class_summaries
 from data import get_loss_data_input
-from data.Sentinel.dataloader_webdataset import get_class_weights
+from data.Sentinel.dataloader_webdataset import get_class_weights, get_aggregated_class_weights
 
 def setup_output_redirection(rank, save_path):
     """Redirect stdout to rank-specific output file"""
@@ -40,10 +40,14 @@ def cleanup_output_redirection():
     sys.stdout = sys.__stdout__
 
 def setup_ddp(rank, world_size):
-    """Initialize distributed training"""
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    master_addr = os.environ.get('MASTER_ADDR')
+    master_port = os.environ.get('MASTER_PORT')
+    
+    dist.init_process_group(
+        backend='nccl',
+        rank=rank,
+        world_size=world_size
+    )
     torch.cuda.set_device(rank)
 
 
@@ -52,7 +56,7 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 
-def train_step(net, sample, loss_fn, optimizer, device, loss_input_fn):
+def train_step(net, sample, loss_fn, optimizer, device, loss_input_fn, epoch):
     """Single training step"""
     optimizer.zero_grad()
     outputs = net(sample['inputs'].to(device))
@@ -83,14 +87,14 @@ def evaluate(net, evalloader, loss_fn, device, loss_input_fn, config, is_distrib
             ground_truth = loss_input_fn(sample, device)
             loss = loss_fn['all'](logits, ground_truth)
             
-            if loss_function == 'masked_cross_entropy':
+            if loss_function in ['masked_cross_entropy', 'masked_focal_loss']:
                 target, mask = ground_truth
                 predicted_all.append(predicted.flatten()[mask.flatten()].cpu().numpy())
                 labels_all.append(target.flatten()[mask.flatten()].cpu().numpy())
             else:
-                predicted_all.append(predicted.flatten().cpu().numpy())
-                labels_all.append(ground_truth.flatten().cpu().numpy())
-            losses_all.append(loss.flatten().cpu().detach().numpy())
+                predicted_all.append(predicted.detach().cpu().flatten().numpy())
+                labels_all.append(ground_truth.detach().cpu().flatten().numpy())
+            losses_all.append(loss.detach().cpu().flatten().numpy())
             
     print(f"[Rank {rank}] Evaluation complete")
 
@@ -136,11 +140,10 @@ def evaluate(net, evalloader, loss_fn, device, loss_input_fn, config, is_distrib
                        "Recall": macro_recall, "F1": macro_F1, "IOU": macro_IOU},
              "micro": {"Loss": losses.mean(), "Accuracy": micro_acc, "Precision": micro_precision,
                        "Recall": micro_recall, "F1": micro_F1, "IOU": micro_IOU},
-             "class": {"Loss": class_loss, "Accuracy": class_acc, "Precision": class_precision,
+             "class": {"Accuracy": class_acc, "Precision": class_precision,
                        "Recall": class_recall, "F1": class_F1, "IOU": class_IOU}},
             top_preds
             )
-
 
 def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, test_only=False):
     """Main training and evaluation function with DDP support"""
@@ -159,6 +162,7 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
     checkpoint = config['CHECKPOINT']["load_from_checkpoint"]
     start_epoch = config['CHECKPOINT'].get("start_epoch", 1)
     weight_decay = get_params_values(config['SOLVER'], "weight_decay", 0)
+    class_weights_p = config['SOLVER'].get('class_weights', None)
     
     # For test mode, checkpoint is required
     if test_only and not checkpoint:
@@ -200,9 +204,8 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
     if is_main_process and not test_only:
         copy_yaml(config)
 
-     # Only needed for loss_function = 'cross_entropy'
-    class_weights = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', power=0.85)
-    # class_weights = None
+    class_weights = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', power=class_weights_p)
+    # class_weights = get_aggregated_class_weights(0.1)
 
     loss_input_fn = get_loss_data_input(config)
     loss_fn = {'all': get_loss(config, device, reduction='none', class_weights=class_weights),
@@ -241,7 +244,7 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
 
     num_steps_train = len(dataloaders['train'])
     trainable_params = get_net_trainable_params(net)
-    optimizer = optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
+    optimizer = optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay, eps=1e-8)
     scheduler = build_scheduler(config, optimizer, num_steps_train)
 
     writer = None
@@ -264,7 +267,7 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
         
         for step, sample in enumerate(dataloaders['train']):
             abs_step += 1
-            logits, ground_truth, loss, grad_norm = train_step(net, sample, loss_fn, optimizer, device, loss_input_fn)
+            logits, ground_truth, loss, grad_norm = train_step(net, sample, loss_fn, optimizer, device, loss_input_fn, epoch)
             
             if len(ground_truth) == 2:
                 labels, unk_masks = ground_truth
@@ -324,6 +327,7 @@ def train_and_evaluate(net, dataloaders, config, device, rank=0, world_size=1, t
                                 status = "(correct)" if pred_class == true_class else "(misclassified)"
                                 print(f"  Top {i+1}: predicted as class {pred_class} ({count} times, {percentage:.1f}%) {status}")
 
+                torch.cuda.empty_cache()
                 net.train()
         
         # End of epoch logging
@@ -361,7 +365,6 @@ def main_worker(rank, world_size, config, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('--config_file', help='configuration (.yaml) file to use')
-    parser.add_argument('--device', default='0', type=str, help='gpu ids to use')
     parser.add_argument('--test', action='store_true', help='run test evaluation only (requires checkpoint)')
 
     args = parser.parse_args()
@@ -371,21 +374,12 @@ if __name__ == "__main__":
         parser.error("--test requires --config_file")
     
     config_file = args.config_file
-    device_ids = [int(d) for d in args.device.split(',')]
     
     config = read_yaml(config_file)
-    config['local_device_ids'] = device_ids
     
-    world_size = len(device_ids)
-    
-    if world_size > 1:
-        # Multi-GPU distributed training/testing
-        torch.multiprocessing.spawn(
-            main_worker,
-            args=(world_size, config, args),
-            nprocs=world_size,
-            join=True
-        )
-    else:
-        # Single GPU training/testing
-        main_worker(0, 1, config, args)
+    # Read env variables from SLURM
+    rank = int(os.environ["SLURM_PROCID"])
+    local_rank = int(os.environ["SLURM_LOCALID"])
+    world_size = int(os.environ["SLURM_NTASKS"])
+
+    main_worker(local_rank, world_size, config, args)

@@ -9,8 +9,6 @@ def get_params_values(args, key, default=None):
     if (key in args) and (args[key] is not None):
             return args[key]
     return default
-    #else:
-    #    raise ValueError("No value provided in config file for %s, default value not provided")
 
 
 #yaml_file = 'configs/test.yaml'

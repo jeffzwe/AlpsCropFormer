@@ -13,7 +13,7 @@ from models import get_model
 from utils.config_files_utils import read_yaml, copy_yaml, get_params_values
 from utils.torch_utils import get_device, get_net_trainable_params, load_from_checkpoint
 from data import get_dataloaders
-from metrics.torch_metrics import get_mean_metrics
+from metrics.torch_metrics import get_mean_metrics, get_binary_metrics
 from metrics.numpy_metrics import get_classification_metrics, get_per_class_loss, get_top_predictions_per_class
 from metrics.loss_functions import get_loss
 from utils.summaries import write_mean_summaries, write_class_summaries
@@ -27,12 +27,13 @@ def train_and_evaluate(net, dataloaders, config, device):
     def train_step(net, sample, loss_fn, optimizer, device, loss_input_fn):
         optimizer.zero_grad()
         outputs = net(sample['inputs'].to(device))
+        outputs = outputs.squeeze(1)
         ground_truth = loss_input_fn(sample, device)
         loss = loss_fn['mean'](outputs, ground_truth)
         loss.backward()
-        # total_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=float('inf'))
+        total_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=float('inf'))
         optimizer.step()
-        return outputs, ground_truth, loss#, total_norm
+        return outputs, ground_truth, loss, total_norm
   
     def evaluate(net, evalloader, loss_fn, config):
         num_classes = config['MODEL']['num_classes']
@@ -41,6 +42,7 @@ def train_and_evaluate(net, dataloaders, config, device):
         labels_all = []
         losses_all = []
         net.eval()
+        
         with torch.no_grad():
             for step, sample in enumerate(tqdm(evalloader, desc="Evaluating")):
                 logits = net(sample['inputs'].to(device))
@@ -48,14 +50,14 @@ def train_and_evaluate(net, dataloaders, config, device):
                 ground_truth = loss_input_fn(sample, device)
                 loss = loss_fn['all'](logits, ground_truth)
                 
-                if loss_function == 'masked_cross_entropy':
+                if loss_function in ['masked_cross_entropy', 'masked_focal_loss']:
                     target, mask = ground_truth
                     predicted_all.append(predicted.flatten()[mask.flatten()].cpu().numpy())
                     labels_all.append(target.flatten()[mask.flatten()].cpu().numpy())
                 else:
-                    predicted_all.append(predicted.flatten().cpu().numpy())
-                    labels_all.append(ground_truth.flatten().cpu().numpy())
-                losses_all.append(loss.flatten().cpu().detach().numpy())
+                    predicted_all.append(predicted.detach().cpu().flatten().numpy())
+                    labels_all.append(ground_truth.detach().cpu().flatten().numpy())
+                losses_all.append(loss.detach().cpu().flatten().numpy())
 
         print("finished iterating over dataset after step %d" % step)
         print("calculating metrics...")
@@ -88,9 +90,6 @@ def train_and_evaluate(net, dataloaders, config, device):
                 print(f"  Top {i+1}: predicted as class {pred_class} ({count} times, {percentage:.1f}%) {status}")
         print(
             "-----------------------------------------------------------------------------------------------------------------------------------------------------------------")
-
-        for i, val in zip(np.arange(num_classes), class_acc):
-            print("Class %d: Accuracy: %.4f" % (i, val))
         
         return (np.arange(num_classes),
                 {"macro": {"Loss": losses.mean(), "Accuracy": macro_acc, "Precision": macro_precision,
@@ -133,8 +132,6 @@ def train_and_evaluate(net, dataloaders, config, device):
 
     copy_yaml(config)
     
-    # Only needed for loss_function = 'cross_entropy'
-    # class_weigts = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', beta=0.99999)
     class_weights = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', power=0.25)
 
     loss_input_fn = get_loss_data_input(config)
@@ -154,16 +151,16 @@ def train_and_evaluate(net, dataloaders, config, device):
     BEST_IOU = 0
 
     net.train()
-    for epoch in range(start_epoch, start_epoch + num_epochs):  # loop over the dataset multiple times
+    for epoch in range(start_epoch, start_epoch + num_epochs):
         print(f"\nEpoch {epoch}/{num_epochs}")
         with tqdm(total=num_steps_train, desc=f"Training Epoch {epoch}") as pbar:
             
             for step, sample in enumerate(dataloaders['train']):
                 abs_step = start_global + (epoch - start_epoch) * num_steps_train + step
-                logits, ground_truth, loss= train_step(net, sample, loss_fn, optimizer, device, loss_input_fn=loss_input_fn)
+                logits, ground_truth, loss, grad_norm = train_step(net, sample, loss_fn, optimizer, device, loss_input_fn=loss_input_fn)
                 
                 # Log individual gradient norm to TensorBoard
-                # writer.add_scalar('training_gradient_norm', grad_norm, abs_step)
+                writer.add_scalar('training_gradient_norm', grad_norm, abs_step)
                 
                 if len(ground_truth) == 2:
                     labels, unk_masks = ground_truth
@@ -172,9 +169,12 @@ def train_and_evaluate(net, dataloaders, config, device):
                     unk_masks = None
                 # print batch statistics ----------------------------------------------------------------------------------#
                 if abs_step % train_metrics_steps == 0:
-                    batch_metrics = get_mean_metrics(
-                        logits=logits, labels=labels, unk_masks=unk_masks, n_classes=num_classes, loss=loss, epoch=epoch,
-                        step=step)
+                    if num_classes == 1:
+                        batch_metrics = get_binary_metrics(
+                            logits=logits, labels=labels, loss=loss, return_all=False)
+                    else:
+                        batch_metrics = get_mean_metrics(
+                            logits=logits, labels=labels, unk_masks=unk_masks, n_classes=num_classes, loss=loss)
                     write_mean_summaries(writer, batch_metrics, abs_step, mode="train", optimizer=optimizer)
                     print("abs_step: %d, epoch: %d, step: %5d, loss: %.7f, batch_iou: %.4f, batch accuracy: %.4f, batch precision: %.4f, "
                         "batch recall: %.4f, batch F1: %.4f" %
@@ -226,38 +226,5 @@ if __name__ == "__main__":
 
     dataloaders = get_dataloaders(config)
     net = get_model(config, device)
-    
-    class_weigts = get_class_weights('lnf_code_2022_pixel_counts.txt', 'crop_mappings.csv', power=1.0)
-    
-    for class_id, weight in enumerate(class_weigts):
-        print(f"Class {class_id}: Weight: {weight}")
-        
-    
-    ############################
-    # checkpoint = config['CHECKPOINT']["load_from_checkpoint"]
-    # if checkpoint:
-    #     load_from_checkpoint(net, checkpoint, partial_restore=False, device=device)
-        
-    # train_iter = iter(dataloaders['train'])
-    # sample = next(train_iter)
-    ###########################
-    # print(net.mlp_head)
-    # linear = net.mlp_head[1]
 
-    # print("Weight mean:", linear.weight.data.mean().item())
-    # print("Weight std:", linear.weight.data.std().item())
-    # print("Bias mean:", linear.bias.data.mean().item())
-    # print("Bias std:", linear.bias.data.std().item())
-    ##########################
-    # print('Sample input shape:', sample['inputs'].shape)
-    # print('Lookin at channel 0:', sample['inputs'][0, 0, :, :, 10])
-    
-    # outputs = net(sample['inputs'].to(device))
-    
-    # print('Model output shape:', outputs.shape)
-    # print('Ground truth shape:', sample['labels'].to(device).shape)
-    # print('Model output', outputs[0,:,:,:])
-    # print('Ground truth:', sample['labels'].to(device)[0,:,:])
-    ############################
-
-    # train_and_evaluate(net, dataloaders, config, device)
+    train_and_evaluate(net, dataloaders, config, device)

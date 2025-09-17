@@ -24,16 +24,16 @@ DATASETS:
   train:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 32
+    batch_size: 8
     extra_data:
-    num_workers: 12
+    num_workers: 4
 
   eval:
     dataset: "Sentinel_fold1"
     label_map:
-    batch_size: 32
+    batch_size: 8
     extra_data:
-    num_workers: 12
+    num_workers: 1
 
   # test:
   #   dataset: "Sentinel_fold1"
