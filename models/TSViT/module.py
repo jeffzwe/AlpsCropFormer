@@ -33,9 +33,7 @@ class PreNormLocal(nn.Module):
         x = x.permute(0, 2, 3, 1)
         x = self.norm(x)
         x = x.permute(0, 3, 1, 2)
-        # print('before fn: ', x.shape)
         x = self.fn(x, **kwargs)
-        # print('after fn: ', x.shape)
         return x
 
 
@@ -86,11 +84,9 @@ class Attention(nn.Module):
         ) if project_out else nn.Identity()
 
     def forward(self, x):
-        # print(x.shape)
         b, n, _, h = *x.shape, self.heads
         qkv = self.to_qkv(x).chunk(3, dim=-1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), qkv)
-        # print(q.shape, k.shape, v.shape)
         dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
 
         attn = dots.softmax(dim=-1)

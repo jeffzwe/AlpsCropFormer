@@ -1,0 +1,66 @@
+MODEL:
+  architecture:  "TSViT"
+  img_res: 16
+  max_seq_len: 24
+  num_channels: 10
+  num_features: 16
+  num_classes: 53
+  ignore_background: False
+  dropout: 0.
+  patch_size: 2
+  dim: 128
+  temporal_depth: 4
+  spatial_depth: 4
+  heads: 4
+  pool: 'cls'
+  dim_head: 32
+  emb_dropout: 0.
+  scale_dim: 4
+  truncate_month: 12  # Include data up until this month of the year (1-12). 12 means all months are included.
+  timestamp_mode: 'sliding_window'   # 'base', 'sliding_window', 'temp_sw', 'temp_no_sw', 'temp_subsample'
+
+
+DATASETS:
+  train:
+    dataset: "Sentinel_fold3"
+    label_map:
+    batch_size: 32
+    extra_data:
+    num_workers: 12
+
+  eval:
+    dataset: "Sentinel_fold3"
+    label_map:
+    batch_size: 32
+    extra_data:
+    num_workers: 12
+
+  # test:
+  #   dataset: "Sentinel_fold3"
+  #   label_map:
+  #   batch_size: 32
+  #   extra_data:
+  #   num_workers: 12
+
+SOLVER:
+  num_epochs: 20
+  num_warmup_epochs: 5
+  loss_function: 'masked_focal_loss' # focal_loss, cross_entropy, binary_cross_entropy, masked_cross_entropy, focal_tversky, log_cosh_dice, lovasz_softmax
+  class_weights: 0.1
+  lr_scheduler: 'cosine'
+  lr_base: 1e-3       # 3e-4 for lovasz_softmax, 1e-4 for focal_tversky, 1e-3 log_cosh_dice
+  lr_min: 5e-6
+  lr_start: 1e-8
+  num_cycles: 1
+  reset_lr: True   # resets lr to base value when loading pretrained model
+  weight_decay: 0.01
+  gamma: 2.0
+
+CHECKPOINT:
+  load_from_checkpoint:
+  start_epoch: 1
+  partial_restore: False
+  save_path: 'models/model_logs/Sentinel/TSViT_fold3.sliding_window.masked_focal'
+  train_metrics_steps: 1000
+  eval_steps: 6875 #3437
+  save_steps: 6875

@@ -1,64 +1,102 @@
-
-
 # PASTIS24 -------------------------------------------------------------------------------------------------
 PASTIS24_fold1:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_1_123_paths.csv"
     paths_eval: "fold-paths/fold_4_paths.csv"
     paths_test: "fold-paths/fold_5_paths.csv"
 
 PASTIS24_fold2:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_2_234_paths.csv"
     paths_eval: "fold-paths/fold_5_paths.csv"
     paths_test: "fold-paths/fold_1_paths.csv"
 
 PASTIS24_fold3:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_3_345_paths.csv"
     paths_eval: "fold-paths/fold_1_paths.csv"
     paths_test: "fold-paths/fold_2_paths.csv"
 
 PASTIS24_fold4:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_4_451_paths.csv"
     paths_eval: "fold-paths/fold_2_paths.csv"
     paths_test: "fold-paths/fold_3_paths.csv"
 
 PASTIS24_fold5:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS24"
+    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS24"
     paths_train: "fold-paths/folds_5_512_paths.csv"
     paths_eval: "fold-paths/fold_3_paths.csv"
     paths_test: "fold-paths/fold_4_paths.csv"
 
 # PASTIS_LOW ----------------------------------------------------------------------------------------------
-
 PASTIS_LOW_fold1:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_1_123_paths.csv"
     paths_eval: "fold-paths/fold_4_paths.csv"
     paths_test: "fold-paths/fold_5_paths.csv"
 
 PASTIS_LOW_fold2:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_2_234_paths.csv"
     paths_eval: "fold-paths/fold_5_paths.csv"
     paths_test: "fold-paths/fold_1_paths.csv"
 
 PASTIS_LOW_fold3:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_3_345_paths.csv"
     paths_eval: "fold-paths/fold_1_paths.csv"
     paths_test: "fold-paths/fold_2_paths.csv"
 
 PASTIS_LOW_fold4:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_4_451_paths.csv"
     paths_eval: "fold-paths/fold_2_paths.csv"
     paths_test: "fold-paths/fold_3_paths.csv"
 
 PASTIS_LOW_fold5:
-    basedir: "/Users/jeffreyzweidler/Desktop/Semester_Project/Datasets/PASTIS_LOW"
+    basedir: /Users/jeffreyzweidler/Desktop/Semester_Project/AlpsCropFormer/datasets/PASTIS/PASTIS_LOW
     paths_train: "fold-paths/folds_5_512_paths.csv"
     paths_eval: "fold-paths/fold_3_paths.csv"
     paths_test: "fold-paths/fold_4_paths.csv"
+
+
+# Sentinel -------------------------------------------------------------------------------------------------
+
+# Used for the SQFS Sentinel dataset structure
+
+# 'Sentinel_fold1':
+#     'basedir': '/srv/data'
+#     'crop_train': 'Sentinel_2022'
+#     'crop_eval': 'Sentinel_2023'
+#     'crop_test': 'Sentinel_2021'
+#     'gt_train': 'Crop_GTs_2022'
+#     'gt_eval': 'Crop_GTs_2023'
+#     'gt_test': 'Crop_GTs_2021'
+#     'temp_train': 'Temp_Calendar_2022'
+#     'temp_eval': 'Temp_Calendar_2023'
+#     'temp_test': 'Temp_Calendar_2021'
+#     'crop_map': 'crop_mappings.csv'
+
+
+# # Used for Webdataset structure with preprocessed data
+Sentinel_fold1:
+    basedir: 'datasets'
+    paths_train: "CropFormer2022_filtered"
+    paths_eval: "CropFormer2023_filtered"
+    paths_test: "CropFormer2021_filtered"
+    crop_map: "crop_mappings.csv"
+
+Sentinel_fold2:
+    basedir: 'datasets'
+    paths_train: "CropFormer2023_filtered"
+    paths_eval: "CropFormer2021_filtered"
+    paths_test: "CropFormer2022_filtered"
+    crop_map: "crop_mappings.csv"
+
+Sentinel_fold3:
+    basedir: 'datasets'
+    paths_train: "CropFormer2021_filtered"
+    paths_eval: "CropFormer2022_filtered"
+    paths_test: "CropFormer2023_filtered"
+    crop_map: "crop_mappings.csv"

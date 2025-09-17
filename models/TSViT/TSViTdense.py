@@ -336,6 +336,8 @@ class TViT(nn.Module):
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(self.dim),
             nn.Linear(self.dim, self.patch_size**2))
+        nn.init.xavier_uniform_(self.mlp_head[1].weight)
+        nn.init.zeros_(self.mlp_head[1].bias)
 
     def forward(self, x):
         x = x.permute(0, 1, 4, 2, 3)
@@ -396,7 +398,7 @@ class TSViT(nn.Module):
         self.to_patch_embedding = nn.Sequential(
             Rearrange('b t c (h p1) (w p2) -> (b h w) t (p1 p2 c)', p1=self.patch_size, p2=self.patch_size),
             nn.Linear(patch_dim, self.dim),)
-        self.to_temporal_embedding_input = nn.Linear(366, self.dim)
+        self.to_temporal_embedding_input = nn.Linear(1, self.dim)  # 1D input instead of 366D
         nn.init.xavier_uniform_(self.to_temporal_embedding_input.weight)
         nn.init.zeros_(self.to_temporal_embedding_input.bias)
         self.temporal_token = nn.Parameter(torch.randn(1, self.num_classes, self.dim))
@@ -418,11 +420,8 @@ class TSViT(nn.Module):
 
         xt = x[:, :, -1, 0, 0]
         x = x[:, :, :-1]
-        xt = (xt * 365.0001).to(torch.int64)
-        xt = F.one_hot(xt, num_classes=366).to(torch.float32)
-
-        xt = xt.reshape(-1, 366)
-        temporal_pos_embedding = self.to_temporal_embedding_input(xt).reshape(B, T, self.dim)
+        xt = xt.unsqueeze(-1)  # Shape: [B, T, 1]
+        temporal_pos_embedding = self.to_temporal_embedding_input(xt)
         x = self.to_patch_embedding(x)
         x = x.reshape(B, -1, T, self.dim)
         x += temporal_pos_embedding.unsqueeze(1)
@@ -561,30 +560,3 @@ class TSViT_lookup(nn.Module):
         B, T = x.shape
         index = torch.bucketize(x.ravel(), self.eval_dates)
         return self.inference_temporal_pos_embedding[index].reshape((B, T, self.dim))
-
-
-
-if __name__ == "__main__":
-    res = 24
-    model_config = {'img_res': res, 'patch_size': 3, 'patch_size_time': 1, 'patch_time': 4, 'num_classes': 20,
-                    'max_seq_len': 16, 'dim': 128, 'temporal_depth': 6, 'spatial_depth': 2,
-                    'heads': 4, 'pool': 'cls', 'num_channels': 14, 'dim_head': 64, 'dropout': 0., 'emb_dropout': 0.,
-                    'scale_dim': 4, 'depth': 4}
-    train_config = {'dataset': "psetae_repl_2018_100_3", 'label_map': "labels_20k2k", 'max_seq_len': 16, 'batch_size': 5,
-                    'extra_data': [], 'num_workers': 4}
-
-    x = torch.rand((3, 16, res, res, 14))
-
-    # model = TViT(model_config).to(DEVICE)
-    # model = STViT(model_config)#.to(DEVICE)
-    # model = TSViT_global_attention_spatial_encoder(model_config)#.to(DEVICE)
-    model = TSViT_single_token(model_config)
-
-    parameters = filter(lambda p: p.requires_grad, model.parameters())
-    parameters = sum([np.prod(p.size()) for p in parameters]) / 1_000_000
-    print('Trainable Parameters: %.3fM' % parameters)
-
-    out = model(x)
-
-    # torch.norm(cls, dim=2).shape
-    print("Shape of out :", out.shape)  # [B, num_classes]
