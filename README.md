@@ -10,17 +10,18 @@ This project is based on the research presented in:
 
 ## Environment Setup
 
-### Installation of Miniconda
-For the initial setup, please follow the instructions for downloading and installing Miniconda available at the [official Conda documentation](https://www.anaconda.com/docs/getting-started/miniconda/install).
+We use a regular Python venv as our environment. Both python versions 3.10 and 3.12 have been tested and are working.
 
-### Environment Configuration
-1. **Creating the Environment**: Navigate to the code directory in your terminal and create the environment using the provided `.yml` file by executing:
+### Environment Local
+Create a new venv and install all packages in requirements_cpu.txt
 
-        conda env create -f deepsatmodels_env_*.yml
+### Environment Cluster
+Create a new venv using the container of your choice and install all packages in requirements_cuda.txt. ADDITIONALLY, make sure that a torch version is install that supports your CUDA version. Depending on the setup, a manual reinstall of the torch is necessary via: 
 
-2. **Activating the Environment**: Activate the newly created environment with:
+```bash
+pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128
+```
 
-        source activate deepsatmodels
 
 ## Experiment Setup
 
@@ -31,7 +32,7 @@ For the initial setup, please follow the instructions for downloading and instal
 
 To train for semantic segmentation, execute the following command, replacing `**` with the appropriate directory names:
 
-        python train_and_eval/segmentation_training_transf.py --config_file configs/**/TSViT.yaml
+        python train_and_eval/seg_train_base.py --config_file configs/**/TSViT.yaml
 
 
 ### Pre-trained checkpoints

@@ -52,7 +52,6 @@ SOLVER:
   lr_min: 5e-6
   lr_start: 1e-8
   num_cycles: 1
-  reset_lr: True   # resets lr to base value when loading pretrained model
   weight_decay: 0.01
   gamma: 2.0
 

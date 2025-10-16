@@ -23,23 +23,17 @@ MODEL:
 DATASETS:
   train:
     dataset: "Sentinel_fold3"
-    label_map:
     batch_size: 32
-    extra_data:
     num_workers: 12
 
   eval:
     dataset: "Sentinel_fold3"
-    label_map:
     batch_size: 32
-    extra_data:
     num_workers: 12
 
   # test:
   #   dataset: "Sentinel_fold3"
-  #   label_map:
   #   batch_size: 32
-  #   extra_data:
   #   num_workers: 12
 
 SOLVER:
@@ -52,7 +46,6 @@ SOLVER:
   lr_min: 5e-6
   lr_start: 1e-8
   num_cycles: 1
-  reset_lr: True   # resets lr to base value when loading pretrained model
   weight_decay: 0.01
   gamma: 2.0
 
