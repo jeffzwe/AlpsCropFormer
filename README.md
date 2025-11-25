@@ -16,7 +16,7 @@ We use a regular Python venv as our environment. Both python versions 3.10 and 3
 Create a new venv and install all packages in requirements_cpu.txt
 
 ### Environment Cluster
-Create a new venv using the container of your choice and install all packages in requirements_cuda.txt. ADDITIONALLY, make sure that a torch version is install that supports your CUDA version. Depending on the setup, a manual reinstall of the torch is necessary via: 
+Create a new venv using the container of your choice and install all packages in requirements_cuda.txt. ADDITIONALLY, make sure that a torch version is installed that supports your CUDA version. Depending on the setup, a manual reinstall of the torch is necessary via: 
 
 ```bash
 pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128
@@ -38,12 +38,6 @@ To train for semantic segmentation, execute the following command, replacing `**
 ### Pre-trained checkpoints
 Download 5-fold PASTIS24 [pre-trained models and tensorboard files](https://drive.google.com/file/d/1AzWEtHxojuCjaIsekja4J54LuEb9e7kw/view?usp=share_link).
 
-
-## BibTex
-If you incorporate any data or code from this repository into your project, please acknowledge the source by citing the following work:
-
-```
-```
 
 ## License and Copyright
 
